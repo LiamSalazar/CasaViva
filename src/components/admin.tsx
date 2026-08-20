@@ -1,0 +1,1647 @@
+"use client";
+
+import Image from "next/image";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState, type ReactNode } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import {
+  BarChart3,
+  Building2,
+  FileText,
+  Home,
+  Images,
+  LogOut,
+  MapPin,
+  MessageSquare,
+  Pencil,
+  Plus,
+  Trash2,
+  Eye,
+  ExternalLink,
+  Users,
+  CalendarDays,
+  Handshake,
+  ShieldCheck,
+} from "lucide-react";
+import type {
+  Development,
+  Guide,
+  HomeContent,
+  Location,
+  Property,
+  PropertyType,
+} from "@/types";
+import {
+  developmentService,
+  guideService,
+  homeContentService,
+  locationService,
+  propertyService,
+  useCasaViva,
+} from "@/services";
+import { formatCurrency, formatDate, slugify, uid } from "@/lib/utils";
+import {
+  CasaVivaLogo,
+  ConfirmDialog,
+  Modal,
+  StatusBadge,
+  useToast,
+} from "@/components/ui";
+import { apiFetch, mapProperty } from "@/services/api";
+
+const adminNav = [
+  ["Inicio", "/administracion", Home],
+  ["Propiedades", "/administracion/propiedades", Building2],
+  ["Desarrollos", "/administracion/desarrollos", Images],
+  ["Catálogos", "/administracion/catalogos", MapPin],
+  ["Contenido", "/administracion/contenido", FileText],
+  ["Consultas", "/administracion/consultas", MessageSquare],
+  ["Clientes", "/administracion/clientes", Users],
+  ["Visitas", "/administracion/visitas", CalendarDays],
+  ["Ventas", "/administracion/ventas", Handshake],
+  ["Marketing y BI", "/administracion/bi", BarChart3],
+  ["Historial", "/administracion/auditoria", ShieldCheck],
+] as const;
+export function AdminHeader({ title }: { title: string }) {
+  return (
+    <header className="admin-header">
+      <h1>{title}</h1>
+    </header>
+  );
+}
+export function AdminSidebar() {
+  const path = usePathname();
+  const router = useRouter();
+  const { logout } = useCasaViva();
+  const [canManageUsers, setCanManageUsers] = useState(false);
+  useEffect(() => { apiFetch<{ can_manage_users: boolean }>("/api/v1/auth/me/").then((x) => setCanManageUsers(x.can_manage_users)).catch(() => setCanManageUsers(false)); }, []);
+  return (
+    <aside className="admin-sidebar">
+      <Link href="/administracion">
+        <CasaVivaLogo variant="light" />
+      </Link>
+      <nav className="admin-nav">
+        {adminNav.map(([label, href, Icon]) => (
+          <Link
+            key={href}
+            href={href}
+            className={
+              path === href || (href !== "/administracion" && path.startsWith(href))
+                ? "active"
+                : ""
+            }
+            title={label}
+          >
+            <Icon size={16} /> {label}
+          </Link>
+        ))}
+      </nav>
+      {canManageUsers && <nav className="admin-nav"><Link href="/administracion/usuarios" className={path.startsWith("/administracion/usuarios") ? "active" : ""}><Users size={16} /> Usuarios</Link></nav>}
+      <div className="admin-nav-bottom">
+        <Link href="/" target="_blank">
+          <ExternalLink size={16} /> Ver sitio
+        </Link>
+        <button
+          className="button ghost"
+          onClick={() => {
+            void logout();
+            router.push("/administracion/acceso");
+          }}
+        >
+          <LogOut size={16} /> Cerrar sesión
+        </button>
+      </div>
+    </aside>
+  );
+}
+export function AdminLayout({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  const { adminAuthenticated, hydrated, refreshAdmin } = useCasaViva();
+  const router = useRouter();
+  useEffect(() => {
+    if (hydrated && !adminAuthenticated) router.replace("/administracion/acceso");
+    if (hydrated && adminAuthenticated) void refreshAdmin();
+  }, [hydrated, adminAuthenticated, router, refreshAdmin]);
+  if (!hydrated || !adminAuthenticated)
+    return (
+      <div className="empty-state">
+        <p>Cargando administración…</p>
+      </div>
+    );
+  return (
+    <div className="admin-layout">
+      <AdminSidebar />
+      <AdminHeader title={title} />
+      <main className="admin-main">{children}</main>
+    </div>
+  );
+}
+
+const loginSchema = z.object({ email: z.email(), password: z.string().min(1) });
+type LoginData = z.infer<typeof loginSchema>;
+export function AdminLoginPage() {
+  const { adminAuthenticated, hydrated, login } = useCasaViva();
+  const router = useRouter();
+  const [invalid, setInvalid] = useState("");
+  const [stage, setStage] = useState<"credentials" | "mfa">("credentials");
+  const [code, setCode] = useState("");
+  const [qr, setQr] = useState<string>();
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+  const { register, handleSubmit } = useForm<LoginData>({
+    resolver: zodResolver(loginSchema),
+  });
+  useEffect(() => {
+    if (hydrated && adminAuthenticated) router.replace("/administracion");
+  }, [hydrated, adminAuthenticated, router]);
+  const submit = async (d: LoginData) => {
+    setInvalid("");
+    try {
+      const result = await apiFetch<{ enrollment_required: boolean }>("/api/v1/auth/login/", { method: "POST", body: JSON.stringify(d) });
+      if (result.enrollment_required) {
+        const enrollment = await apiFetch<{ qr_png: string }>("/api/v1/auth/mfa/enroll/", { method: "POST", body: "{}" });
+        setQr(`data:image/png;base64,${enrollment.qr_png}`);
+      }
+      setStage("mfa");
+    } catch (error) { setInvalid(error instanceof Error ? error.message : "No fue posible iniciar sesión."); }
+  };
+  const verify = async (event: React.FormEvent) => {
+    event.preventDefault(); setInvalid("");
+    try {
+      const result = await apiFetch<{ recovery_codes?: string[] }>("/api/v1/auth/mfa/verify/", { method: "POST", body: JSON.stringify({ code }) });
+      if (result.recovery_codes?.length) { setRecoveryCodes(result.recovery_codes); return; }
+      login(); router.push("/administracion");
+    } catch (error) { setInvalid(error instanceof Error ? error.message : "Código incorrecto."); }
+  };
+  return (
+    <div className="admin-login">
+      <div
+        className="admin-login-art"
+        style={{
+          backgroundImage:
+            "url(https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1600&q=86)",
+        }}
+      />
+      <div className="admin-login-form">
+        <div>
+          <CasaVivaLogo />
+          <h1>Administración</h1>
+          <p className="muted">Gestiona propiedades, clientes, contenido y resultados.</p>
+          {stage === "credentials" ? <form onSubmit={handleSubmit(submit)}>
+            <label className="field">
+              <span>Correo</span>
+              <input type="email" {...register("email")} />
+            </label>
+            <label className="field">
+              <span>Contraseña</span>
+              <input type="password" {...register("password")} />
+            </label>
+            {invalid && <small>{invalid}</small>}
+            <button className="button" type="submit">
+              Entrar
+            </button>
+          </form> : recoveryCodes.length ? <div className="recovery-codes"><h2>Códigos de recuperación</h2><p>Guárdalos ahora en un lugar seguro. No volverán a mostrarse.</p>{recoveryCodes.map((x) => <code key={x}>{x}</code>)}<button className="button" onClick={() => { login(); router.push("/administracion"); }}>Continuar</button></div> : <form onSubmit={verify}>{qr && <><p>Escanea este código con tu aplicación de autenticación.</p><Image src={qr} alt="Código de configuración MFA" width={220} height={220} unoptimized /></>}<label className="field"><span>Código de seguridad</span><input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} /></label>{invalid && <small>{invalid}</small>}<button className="button" type="submit">Verificar</button></form>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AdminDashboard() {
+  const { properties, developments, inquiries } = useCasaViva();
+  const published = properties.filter((p) => p.published).length;
+  return (
+    <AdminLayout title="Inicio">
+      <div className="admin-title">
+        <div>
+          <span className="eyebrow">Operación</span>
+          <h2>Resumen del sitio</h2>
+        </div>
+      </div>
+      <div className="metric-grid">
+        <Metric label="Propiedades publicadas" value={published} />
+        <Metric
+          label="Propiedades borrador"
+          value={properties.length - published}
+        />
+        <Metric label="Desarrollos" value={developments.length} />
+        <Metric label="Consultas recibidas" value={inquiries.length} />
+      </div>
+      <div className="admin-panels">
+        <section className="admin-panel">
+          <h3>Últimas propiedades</h3>
+          {[...properties]
+            .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+            .slice(0, 5)
+            .map((p) => (
+              <Link
+                className="admin-list-row"
+                href={`/administracion/propiedades/${p.id}`}
+                key={p.id}
+              >
+                <Image src={p.heroImage} alt="" width={60} height={44} />
+                <span style={{ flex: 1 }}>{p.title}</span>
+                <span>{formatCurrency(p.price)}</span>
+              </Link>
+            ))}
+        </section>
+        <section className="admin-panel">
+          <h3>Últimas consultas</h3>
+          {inquiries.slice(0, 5).map((i) => (
+            <Link className="admin-list-row" href="/administracion/consultas" key={i.id}>
+              <span style={{ flex: 1 }}>
+                <strong>{i.name}</strong>
+                <br />
+                <small>{i.message.slice(0, 45)}…</small>
+              </span>
+              <StatusBadge tone={i.status === "new" ? "danger" : "neutral"}>
+                {statusLabel(i.status)}
+              </StatusBadge>
+            </Link>
+          ))}
+        </section>
+      </div>
+    </AdminLayout>
+  );
+}
+function Metric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="metric-card">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+export function AdminPropertiesPage() {
+  const { properties, deleteProperty, refreshAdmin } = useCasaViva();
+  const [query, setQuery] = useState("");
+  const [remove, setRemove] = useState<Property>();
+  const [showArchived, setShowArchived] = useState(false);
+  const [archived, setArchived] = useState<Property[]>([]);
+  const [hardDelete, setHardDelete] = useState<Property>();
+  const [confirmation, setConfirmation] = useState("");
+  const [hardDeleteReason, setHardDeleteReason] = useState("");
+  const [deletePreview, setDeletePreview] = useState<{ inquiries: number; analytics_events: number; sales: number; can_delete: boolean }>();
+  const [actionError, setActionError] = useState("");
+  const { toast } = useToast();
+  useEffect(() => {
+    if (!showArchived) return;
+    apiFetch<{ results: Array<Record<string, any>> }>("/api/v1/admin/listings/?page_size=100&archived=all")
+      .then((result) => setArchived(result.results.map(mapProperty).filter((item) => Boolean(item.archivedAt))))
+      .catch((error) => setActionError(error instanceof Error ? error.message : "No fue posible cargar los registros archivados"));
+  }, [showArchived]);
+  const source = showArchived ? archived : properties;
+  const list = source.filter((p) =>
+    [p.title, p.municipality, p.slug]
+      .join(" ")
+      .toLowerCase()
+      .includes(query.toLowerCase()),
+  );
+  return (
+    <AdminLayout title="Propiedades">
+      <AdminTitle
+        title="Propiedades"
+        action="Nueva propiedad"
+        href="/administracion/propiedades/nueva"
+      />
+      <div className="admin-toolbar">
+        <input
+          placeholder="Buscar propiedad o ubicación"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <span>{list.length} registros</span>
+        <button className="button secondary" onClick={() => setShowArchived((value) => !value)}>{showArchived ? "Ver activas" : "Ver archivadas"}</button>
+        <a className="button secondary" href="/api/v1/admin/offerings/export/">Exportar CSV</a>
+      </div>
+      {actionError && <p className="form-error">{actionError}</p>}
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>Imagen</th>
+              <th>Propiedad</th>
+              <th>Ubicación</th>
+              <th>Precio</th>
+              <th>Estado</th>
+              <th>Publicada</th>
+              <th>Actualizada</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((p) => (
+              <tr key={p.id}>
+                <td>
+                  <Image src={p.heroImage} alt="" width={70} height={50} />
+                </td>
+                <td>
+                  <strong>{p.title}</strong>
+                  <br />
+                  <small>{p.slug}</small>
+                </td>
+                <td>
+                  {p.municipality}
+                  <br />
+                  <small>{p.state}</small>
+                </td>
+                <td>{formatCurrency(p.price)}</td>
+                <td>
+                  <StatusBadge
+                    tone={
+                      p.status === "available"
+                        ? "success"
+                        : p.status === "temporarily_unavailable"
+                          ? "danger"
+                          : "neutral"
+                    }
+                  >
+                    {p.status}
+                  </StatusBadge>
+                </td>
+                <td>{p.published ? "Sí" : "Borrador"}</td>
+                <td>{formatDate(p.updatedAt)}</td>
+                <td>
+                  <div className="table-actions">
+                    {!showArchived && <Link title="Editar" href={`/administracion/propiedades/${p.id}`}>
+                      <Pencil size={16} />
+                    </Link>}
+                    {!showArchived && <Link
+                      title="Vista previa"
+                      href={`/preview/propiedades/${p.id}`}
+                      target="_blank"
+                    >
+                      <Eye size={16} />
+                    </Link>}
+                    {!showArchived && <button title="Archivar" onClick={() => setRemove(p)}>
+                      <Trash2 size={16} />
+                    </button>}
+                    {showArchived && <button onClick={async () => { try { await apiFetch(`/api/v1/admin/listings/${p.id}/restore/`, { method: "POST", body: "{}" }); setArchived((items) => items.filter((item) => item.id !== p.id)); await refreshAdmin(); toast("Registro restaurado"); } catch (error) { setActionError(error instanceof Error ? error.message : "No fue posible restaurar"); } }}>Restaurar</button>}
+                    {showArchived && <button className="danger" onClick={() => { setHardDelete(p); setConfirmation(""); setHardDeleteReason(""); setDeletePreview(undefined); setActionError(""); void apiFetch<{ inquiries: number; analytics_events: number; sales: number; can_delete: boolean }>(`/api/v1/admin/listings/${p.id}/delete-preview/`).then(setDeletePreview).catch((error) => setActionError(error instanceof Error ? error.message : "No fue posible revisar las dependencias")); }}>Eliminar definitivamente</button>}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <ConfirmDialog
+        open={!!remove}
+        onClose={() => setRemove(undefined)}
+        title="¿Archivar esta propiedad?"
+        description="La propiedad saldrá del flujo operativo y podrá restaurarse posteriormente."
+        confirmLabel="Archivar"
+        onConfirm={async () => {
+          if (remove) {
+            try { await deleteProperty(remove.id); toast("Propiedad archivada"); }
+            catch (error) { setActionError(error instanceof Error ? error.message : "No fue posible archivar"); }
+          }
+        }}
+      />
+      <Modal open={Boolean(hardDelete)} onClose={() => setHardDelete(undefined)} title="Eliminar definitivamente">
+        <p className="muted">Esta acción no se puede deshacer. Si el registro forma parte de una venta, CasaViva impedirá eliminarlo.</p>
+        {deletePreview && <div className="inventory-line"><span>Consultas <strong>{deletePreview.inquiries}</strong></span><span>Eventos históricos <strong>{deletePreview.analytics_events}</strong></span><span>Ventas <strong>{deletePreview.sales}</strong></span></div>}
+        <label className="field"><span>Para confirmar, escribe “{hardDelete?.title}”</span><input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label>
+        <label className="field"><span>Motivo</span><textarea value={hardDeleteReason} onChange={(event) => setHardDeleteReason(event.target.value)} /></label>
+        {actionError && <p className="form-error">{actionError}</p>}
+        {deletePreview?.sales ? <p className="form-error">Este registro forma parte del historial de una venta y no puede eliminarse definitivamente. Puedes conservarlo archivado.</p> : null}
+        <div className="modal-actions"><button className="button secondary" onClick={() => setHardDelete(undefined)}>Cancelar</button><button className="button danger" disabled={!hardDelete || confirmation !== hardDelete.title || !hardDeleteReason.trim() || !deletePreview?.can_delete} onClick={async () => { if (!hardDelete) return; try { await apiFetch(`/api/v1/admin/listings/${hardDelete.id}/hard-delete/`, { method: "POST", body: JSON.stringify({ confirmation, reason: hardDeleteReason.trim() }) }); setArchived((items) => items.filter((item) => item.id !== hardDelete.id)); setHardDelete(undefined); toast("Registro eliminado definitivamente"); } catch (error) { setActionError(error instanceof Error ? error.message : "No fue posible eliminar"); } }}>Eliminar definitivamente</button></div>
+      </Modal>
+    </AdminLayout>
+  );
+}
+function AdminTitle({
+  title,
+  action,
+  href,
+}: {
+  title: string;
+  action?: string;
+  href?: string;
+}) {
+  return (
+    <div className="admin-title">
+      <div>
+        <span className="eyebrow">CasaViva</span>
+        <h2>{title}</h2>
+      </div>
+      {action && href && (
+        <Link className="button" href={href}>
+          <Plus size={16} />
+          {action}
+        </Link>
+      )}
+    </div>
+  );
+}
+
+const propertySchema = z.object({
+  title: z.string().min(3),
+  slug: z.string().min(3),
+});
+const blankProperty = (): Property => ({
+  id: uid("prop"),
+  slug: "",
+  title: "",
+  operation: "sale",
+  propertyType: "house",
+  condition: "new",
+  status: "available",
+  sourceType: "PRIVATE",
+  published: false,
+  featured: false,
+  currency: "MXN",
+  priceLabel: "fixed",
+  description: "",
+  shortDescription: "",
+  amenities: [],
+  internalFeatures: [],
+  externalFeatures: [],
+  heroImage: "/casaviva-placeholder.svg",
+  gallery: [],
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  internal: {},
+});
+export function PropertyFormPage({ id }: { id?: string }) {
+  const { properties, developments, locations } = useCasaViva();
+  const router = useRouter();
+  const existing = properties.find((p) => p.id === id);
+  const [item, setItem] = useState<Property>(() =>
+    existing ? structuredClone(existing) : blankProperty(),
+  );
+  const [errors, setErrors] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [modelLinks, setModelLinks] = useState<Array<{ id: string; development: string; development_name: string; housing_model: string; model_name: string; developer_id: string; developer_name: string }>>([]);
+  const [amenityOptions, setAmenityOptions] = useState<Array<{ id: string; name: string; category: string }>>([]);
+  const [featureOptions, setFeatureOptions] = useState<Array<{ id: string; label: string; data_type: string; unit?: string; choices?: Array<{ id: string; label: string }> }>>([]);
+  useEffect(() => { if (existing || item.sourceType === "DEVELOPER") apiFetch<{ results: typeof modelLinks }>("/api/v1/admin/development-models/?page_size=100").then((x) => setModelLinks(x.results)).catch(() => setModelLinks([])); }, [existing, item.sourceType]);
+  useEffect(() => { apiFetch<{ results: Array<{ id: string; name: string; category: string }> }>("/api/v1/admin/amenities/?page_size=100&is_active=true").then((x) => setAmenityOptions(x.results)).catch(() => setAmenityOptions([])); }, []);
+  useEffect(() => { apiFetch<{ results: Array<{ id: string; label: string; data_type: string; unit?: string; choices?: Array<{ id: string; label: string }> }> }>("/api/v1/admin/features/?page_size=100&is_active=true").then((x) => setFeatureOptions(x.results)).catch(() => setFeatureOptions([])); }, []);
+  const { toast } = useToast();
+  const update = <K extends keyof Property>(key: K, value: Property[K]) =>
+    setItem((p) => ({ ...p, [key]: value }));
+  const save = async () => {
+    const parsed = propertySchema.safeParse(item);
+    const duplicate = properties.some(
+      (p) => p.slug === item.slug && p.id !== item.id,
+    );
+    const issues = [
+      ...(!parsed.success
+        ? parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`)
+        : []),
+      ...(duplicate ? ["El slug ya existe."] : []),
+    ];
+    if (issues.length) {
+      setErrors(issues);
+      return;
+    }
+    setSaving(true);
+    try {
+      await propertyService.save({ ...item, updatedAt: new Date().toISOString() });
+      toast(existing ? "Cambios guardados" : "Propiedad creada");
+      router.push("/administracion/propiedades");
+    } catch (error) {
+      setErrors([error instanceof Error ? error.message : "Error al guardar"]);
+    } finally { setSaving(false); }
+  };
+  return (
+    <AdminLayout title={existing ? "Editar propiedad" : "Nueva propiedad"}>
+      <AdminTitle
+        title={existing ? item.title || "Editar propiedad" : "Nueva propiedad"}
+      />
+      {errors.length > 0 && (
+        <div className="demo-reset">
+          {errors.map((e) => (
+            <div key={e}>{e}</div>
+          ))}
+        </div>
+      )}
+      <FormSection title="Información básica">
+        <div className="admin-form-grid">
+          <Text
+            label="Título"
+            value={item.title}
+            onChange={(v) => {
+              update("title", v);
+              if (!existing) update("slug", slugify(v));
+            }}
+          />
+          <Text
+            label="Slug"
+            value={item.slug}
+            onChange={(v) => update("slug", slugify(v))}
+          />
+          <Select
+            label="Tipo"
+            value={item.propertyType}
+            onChange={(v) => update("propertyType", v as PropertyType)}
+            options={[
+              ["Casa", "house"],
+              ["Departamento", "apartment"],
+              ["Terreno", "land"],
+              ["Townhouse", "townhouse"],
+            ]}
+          />
+          <Select
+            label="Condición"
+            value={item.condition}
+            onChange={(v) => update("condition", v as Property["condition"])}
+            options={[
+              ["Nueva", "new"],
+              ["Usada", "used"],
+            ]}
+          />
+          <Select
+            label="Estado de inventario"
+            value={item.status}
+            onChange={(v) => update("status", v as Property["status"])}
+            options={[
+              ["Disponible", "available"],
+              ["No disponible temporalmente", "temporarily_unavailable"],
+              ["Reservada", "reserved"],
+              ["Vendida", "sold"],
+            ]}
+          />
+          <Toggle
+            label="Publicada"
+            checked={item.published}
+            onChange={(v) => update("published", v)}
+          />
+          <Toggle
+            label="Destacada"
+            checked={item.featured}
+            onChange={(v) => update("featured", v)}
+          />
+        </div>
+      </FormSection>
+      <FormSection title="Precio">
+        <div className="admin-form-grid">
+          <NumberField
+            label="Precio MXN"
+            value={item.price}
+            onChange={(v) => update("price", v)}
+          />
+          <Toggle
+            label={'Mostrar "Desde"'}
+            checked={item.priceLabel === "from"}
+            onChange={(v) => update("priceLabel", v ? "from" : "fixed")}
+          />
+        </div>
+      </FormSection>
+      <FormSection title="Ubicación">
+        <div className="admin-form-grid">
+          <Text
+            label="Colonia"
+            value={item.neighborhood || ""}
+            onChange={(v) => update("neighborhood", v)}
+          />
+          <Text
+            label="Dirección"
+            value={item.address || ""}
+            onChange={(v) => update("address", v)}
+          />
+          <NumberField
+            label="Latitud"
+            value={item.latitude}
+            onChange={(v) => update("latitude", v)}
+            step="0.000001"
+          />
+          <NumberField
+            label="Longitud"
+            value={item.longitude}
+            onChange={(v) => update("longitude", v)}
+            step="0.000001"
+          />
+        </div>
+      </FormSection>
+      <FormSection title="Dimensiones">
+        <div className="admin-form-grid">
+          {[
+            ["Recámaras", "bedrooms"],
+            ["Baños", "bathrooms"],
+            ["Medios baños", "halfBathrooms"],
+            ["Estacionamientos", "parkingSpaces"],
+            ["Construcción m²", "constructionM2"],
+            ["Terreno m²", "landM2"],
+            ["Niveles", "levels"],
+          ].map(([l, k]) => (
+            <NumberField
+              key={k}
+              label={l}
+              value={item[k as keyof Property] as number | undefined}
+              onChange={(v) => update(k as keyof Property, v as never)}
+            />
+          ))}
+        </div>
+      </FormSection>
+      <FormSection title="Desarrollo">
+        <div className="admin-form-grid">
+          <Select label="Origen" value={item.sourceType || "PRIVATE"} onChange={(v) => setItem((p) => ({ ...p, sourceType: v as Property["sourceType"], developerId: undefined, developmentId: undefined, developmentModelId: undefined }))} options={[["Particular", "PRIVATE"], ["Desarrolladora", "DEVELOPER"]]} />
+          {item.sourceType === "DEVELOPER" && <>
+          <Select
+            label="Desarrolladora"
+            value={item.developerId || ""}
+            onChange={(v) => setItem((p) => ({ ...p, developerId: v || undefined, developmentId: undefined, developmentModelId: undefined }))}
+            options={[["Selecciona", ""], ...Array.from(new Map(modelLinks.map((x) => [x.developer_id, x.developer_name]))).map(([value, label]) => [label, value])]}
+          />
+          <Select label="Desarrollo" value={item.developmentId || ""} onChange={(v) => setItem((p) => ({ ...p, developmentId: v || undefined, developmentModelId: undefined }))} options={[["Selecciona", ""], ...developments.filter((d) => modelLinks.some((x) => x.developer_id === item.developerId && x.development === d.id)).map((d) => [d.name, d.id])]} />
+          <Select label="Modelo" value={item.developmentModelId || ""} onChange={(v) => { const link = modelLinks.find((x) => x.id === v); setItem((p) => ({ ...p, developmentModelId: v || undefined, modelName: link?.model_name })); }} options={[["Selecciona", ""], ...modelLinks.filter((x) => x.development === item.developmentId).map((x) => [x.model_name, x.id])]} />
+          </>}
+          {item.sourceType !== "DEVELOPER" && <Select
+            label="Ubicación"
+            value={locations.find((x) => x.name === item.municipality && x.state === item.state)?.id || ""}
+            onChange={(v) => { const location = locations.find((x) => x.id === v); setItem((p) => ({ ...p, municipality: location?.name, state: location?.state })); }}
+            options={[["Selecciona estado y municipio", ""], ...locations.map((x) => [`${x.name}, ${x.state}`, x.id])]}
+          />
+          }
+        </div>
+      </FormSection>
+      <FormSection title="Contenido">
+        <div className="admin-form-grid">
+          <Area
+            label="Descripción corta"
+            value={item.shortDescription}
+            onChange={(v) => update("shortDescription", v)}
+          />
+          <Area
+            label="Descripción completa"
+            value={item.description}
+            onChange={(v) => update("description", v)}
+          />
+        </div>
+      </FormSection>
+      <FormSection title="Características">
+        <div className="filter-checks">{amenityOptions.map((amenity) => <label className="check-chip" key={amenity.id}><input type="checkbox" checked={(item.amenityIds || []).includes(amenity.id)} onChange={(event) => setItem((current) => ({ ...current, amenityIds: event.target.checked ? [...(current.amenityIds || []), amenity.id] : (current.amenityIds || []).filter((id) => id !== amenity.id), amenities: event.target.checked ? [...current.amenities.filter((name) => name !== amenity.name), amenity.name] : current.amenities.filter((name) => name !== amenity.name) }))} /><span>{amenity.name}</span></label>)}</div>
+        <div className="admin-form-grid">{featureOptions.map((feature) => { const current = item.featureValues?.find((value) => value.definition === feature.id); const setFeature = (changes: Record<string, unknown>) => setItem((property) => ({ ...property, featureValues: [...(property.featureValues || []).filter((value) => value.definition !== feature.id), { definition: feature.id, data_type: feature.data_type, ...changes }] })); return feature.data_type === "BOOLEAN" ? <Toggle key={feature.id} label={feature.label} checked={Boolean(current?.value_boolean)} onChange={(value) => setFeature({ value_boolean: value })} /> : feature.data_type === "NUMBER" ? <NumberField key={feature.id} label={`${feature.label}${feature.unit ? ` (${feature.unit})` : ""}`} value={current?.value_number} onChange={(value) => setFeature({ value_number: value })} /> : feature.data_type === "CHOICE" ? <Select key={feature.id} label={feature.label} value={current?.value_choice || ""} onChange={(value) => setFeature({ value_choice: value || undefined })} options={[["Selecciona", ""], ...(feature.choices || []).map((choice) => [choice.label, choice.id])]} /> : <Text key={feature.id} label={feature.label} value={current?.value_text || ""} onChange={(value) => setFeature({ value_text: value })} />; })}</div>
+      </FormSection>
+      <FormSection title="Multimedia">
+        <div className="admin-form-grid">
+          <label className="field"><span>Imagen principal</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploading} onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setUploading(true); try { const form = new FormData(); form.append("file", file); form.append("media_type", "IMAGE"); form.append("alt_text", item.title); const asset = await apiFetch<{ id: string; url: string }>("/api/v1/admin/media/", { method: "POST", body: form }); setItem((p) => ({ ...p, heroImage: asset.url, heroMediaId: asset.id })); toast("Imagen cargada"); } catch (error) { setErrors([error instanceof Error ? error.message : "Error al cargar imagen"]); } finally { setUploading(false); } }} /><small>{uploading ? "Cargando imagen…" : "JPG, PNG o WebP. El servidor la valida y optimiza."}</small></label>
+        </div>
+        {item.heroImage && (
+          <div className="image-preview">
+            <Image
+              src={item.heroImage}
+              alt="Vista previa"
+              width={1000}
+              height={400}
+            />
+          </div>
+        )}
+      </FormSection>
+      <FormSection title="Datos internos">
+        <p className="muted">Estos datos nunca se publican.</p>
+        <div className="admin-form-grid">
+          <Text
+            label="Referencia"
+            value={item.internal?.reference || ""}
+            onChange={(v) =>
+              update("internal", { ...item.internal, reference: v })
+            }
+          />
+          <NumberField
+            label="Comisión %"
+            value={item.internal?.commissionPercent || 0}
+            onChange={(v) =>
+              update("internal", { ...item.internal, commissionPercent: v })
+            }
+          />
+          <Area
+            label="Notas internas"
+            value={item.internal?.notes || ""}
+            onChange={(v) => update("internal", { ...item.internal, notes: v })}
+          />
+        </div>
+      </FormSection>
+      <div className="admin-form-actions">
+        <Link className="button secondary" href="/administracion/propiedades">
+          Cancelar
+        </Link>
+        <button className="button" onClick={() => void save()} disabled={saving}>
+          {saving ? "Guardando…" : "Guardar propiedad"}
+        </button>
+      </div>
+    </AdminLayout>
+  );
+}
+
+export function AdminDevelopmentsPage() {
+  const { developments, deleteDevelopment, properties } = useCasaViva();
+  const [remove, setRemove] = useState<Development>();
+  const { toast } = useToast();
+  return (
+    <AdminLayout title="Desarrollos">
+      <AdminTitle
+        title="Desarrollos"
+        action="Nuevo desarrollo"
+        href="/administracion/desarrollos/nuevo"
+      />
+      <EntityTable
+        heads={[
+          "Imagen",
+          "Desarrollo",
+          "Ubicación",
+          "Modelos",
+          "Publicada",
+          "Acciones",
+        ]}
+      >
+        {developments.map((d) => (
+          <tr key={d.id}>
+            <td>
+              <Image src={d.heroImage} alt="" width={70} height={50} />
+            </td>
+            <td>
+              <strong>{d.name}</strong>
+              <br />
+              <small>{d.developerName}</small>
+            </td>
+            <td>
+              {d.municipality}, {d.state}
+            </td>
+            <td>{properties.filter((p) => p.developmentId === d.id).length}</td>
+            <td>{d.published ? "Sí" : "Borrador"}</td>
+            <td>
+              <div className="table-actions">
+                <Link href={`/administracion/desarrollos/${d.id}`}>
+                  <Pencil size={16} />
+                </Link>
+                <button onClick={() => setRemove(d)}>
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </EntityTable>
+      <ConfirmDialog
+        open={!!remove}
+        onClose={() => setRemove(undefined)}
+        title="¿Eliminar este desarrollo?"
+        description="Las propiedades asociadas conservarán sus datos, pero perderán esta relación."
+        onConfirm={() => {
+          if (remove) {
+            deleteDevelopment(remove.id);
+            toast("Desarrollo eliminado");
+          }
+        }}
+      />
+    </AdminLayout>
+  );
+}
+
+export function DevelopmentFormPage({ id }: { id?: string }) {
+  const { developments, locations } = useCasaViva();
+  const existing = developments.find((d) => d.id === id);
+  const router = useRouter();
+  const { toast } = useToast();
+  const [developers, setDevelopers] = useState<Array<{ id: string; name: string }>>([]);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    apiFetch<{ results: Array<{ id: string; name: string }> }>("/api/v1/admin/developers/?page_size=100")
+      .then((result) => setDevelopers(result.results))
+      .catch(() => setDevelopers([]));
+  }, []);
+  const [item, setItem] = useState<Development>(() =>
+    existing
+      ? structuredClone(existing)
+      : {
+          id: uid("dev"),
+          slug: "",
+          name: "",
+          developerName: "",
+          description: "",
+          shortDescription: "",
+          state: "",
+          municipality: "",
+          heroImage: "/casaviva-placeholder.svg",
+          gallery: [],
+          amenities: [],
+          propertyIds: [],
+          published: false,
+          featured: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+  );
+  const u = <K extends keyof Development>(k: K, v: Development[K]) =>
+    setItem((x) => ({ ...x, [k]: v }));
+  const save = async () => {
+    if (
+      !item.name ||
+      !item.slug ||
+      !item.developerId ||
+      !item.stateId ||
+      !item.municipalityId ||
+      developments.some((d) => d.slug === item.slug && d.id !== item.id)
+    ) {
+      toast("Revisa el nombre, slug, desarrolladora y ubicación");
+      return;
+    }
+    setSaving(true);
+    try {
+      await developmentService.save({ ...item, updatedAt: new Date().toISOString() });
+      toast(existing ? "Cambios guardados" : "Desarrollo creado");
+      router.push("/administracion/desarrollos");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Error al guardar");
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <AdminLayout title={existing ? "Editar desarrollo" : "Nuevo desarrollo"}>
+      <AdminTitle title={item.name || "Nuevo desarrollo"} />
+      <FormSection title="Información">
+        <div className="admin-form-grid">
+          <Text
+            label="Nombre"
+            value={item.name}
+            onChange={(v) => {
+              u("name", v);
+              if (!existing) u("slug", slugify(v));
+            }}
+          />
+          <Text
+            label="Slug"
+            value={item.slug}
+            onChange={(v) => u("slug", slugify(v))}
+          />
+          <Select
+            label="Desarrolladora"
+            value={item.developerId || ""}
+            onChange={(v) => { const developer = developers.find((x) => x.id === v); setItem((current) => ({ ...current, developerId: v || undefined, developerName: developer?.name || "" })); }}
+            options={[["Selecciona", ""], ...developers.map((developer) => [developer.name, developer.id])]}
+          />
+          <Select
+            label="Estado y municipio"
+            value={item.municipalityId || ""}
+            onChange={(v) => { const location = locations.find((x) => x.id === v); setItem((current) => ({ ...current, municipalityId: location?.id, stateId: location?.stateId, municipality: location?.name || "", state: location?.state || "" })); }}
+            options={[["Selecciona", ""], ...locations.map((location) => [`${location.name}, ${location.state}`, location.id])]}
+          />
+          <Text
+            label="Colonia"
+            value={item.neighborhood || ""}
+            onChange={(v) => u("neighborhood", v)}
+          />
+          <NumberField
+            label="Latitud"
+            value={item.latitude}
+            onChange={(v) => u("latitude", v)}
+            step="0.000001"
+          />
+          <NumberField
+            label="Longitud"
+            value={item.longitude}
+            onChange={(v) => u("longitude", v)}
+            step="0.000001"
+          />
+          <Area
+            label="Descripción corta"
+            value={item.shortDescription}
+            onChange={(v) => u("shortDescription", v)}
+          />
+          <Area
+            label="Descripción"
+            value={item.description}
+            onChange={(v) => u("description", v)}
+          />
+          <Toggle
+            label="Publicado"
+            checked={item.published}
+            onChange={(v) => u("published", v)}
+          />
+          <Toggle
+            label="Destacado"
+            checked={item.featured}
+            onChange={(v) => u("featured", v)}
+          />
+        </div>
+      </FormSection>
+      <FormSection title="Modelos asociados">
+        <p className="muted">Las relaciones con modelos se administran desde la sección Modelos para conservar sus ofertas y precios independientes.</p>
+        <Link className="button secondary" href="/administracion/modelos">Administrar modelos</Link>
+      </FormSection>
+      <div className="admin-form-actions">
+        <Link className="button secondary" href="/administracion/desarrollos">
+          Cancelar
+        </Link>
+        <button className="button" onClick={() => void save()} disabled={saving}>
+          {saving ? "Guardando…" : "Guardar desarrollo"}
+        </button>
+      </div>
+    </AdminLayout>
+  );
+}
+
+export function AdminLocationsPage() {
+  const { locations, deleteLocation } = useCasaViva();
+  const [edit, setEdit] = useState<Location>();
+  const [remove, setRemove] = useState<Location>();
+  const [creating, setCreating] = useState(false);
+  const { toast } = useToast();
+  return (
+    <AdminLayout title="Ubicaciones">
+      <AdminTitle title="Ubicaciones" />
+      <button
+        className="button"
+        style={{ marginBottom: 18 }}
+        onClick={() => setCreating(true)}
+      >
+        <Plus size={16} /> Nueva ubicación
+      </button>
+      <EntityTable
+        heads={["Imagen", "Ubicación", "Estado", "Destacada", "Acciones"]}
+      >
+        {locations.map((l) => (
+          <tr key={l.id}>
+            <td>
+              <Image src={l.heroImage} alt="" width={70} height={50} />
+            </td>
+            <td>
+              <strong>{l.name}</strong>
+            </td>
+            <td>{l.state}</td>
+            <td>{l.featured ? "Sí" : "No"}</td>
+            <td>
+              <div className="table-actions">
+                <button onClick={() => setEdit(l)}>
+                  <Pencil size={16} />
+                </button>
+                <button onClick={() => setRemove(l)}>
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </EntityTable>
+      {(edit || creating) && (
+        <LocationInline
+          item={edit}
+          onClose={() => {
+            setEdit(undefined);
+            setCreating(false);
+          }}
+        />
+      )}
+      <ConfirmDialog
+        open={!!remove}
+        onClose={() => setRemove(undefined)}
+        title="¿Eliminar esta ubicación?"
+        description="La página editorial de esta ubicación dejará de estar disponible."
+        onConfirm={() => {
+          if (remove) {
+            deleteLocation(remove.id);
+            toast("Ubicación eliminada");
+          }
+        }}
+      />
+    </AdminLayout>
+  );
+}
+function LocationInline({
+  item,
+  onClose,
+}: {
+  item?: Location;
+  onClose: () => void;
+}) {
+  const [x, setX] = useState<Location>(() =>
+    item
+      ? structuredClone(item)
+      : {
+          id: uid("loc"),
+          slug: "",
+          name: "",
+          state: "Estado de México",
+          description: "",
+          heroImage:
+            "https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1800&q=86",
+          featured: false,
+          latitude: 19.7,
+          longitude: -99,
+        },
+  );
+  const { toast } = useToast();
+  const u = <K extends keyof Location>(k: K, v: Location[K]) =>
+    setX((a) => ({ ...a, [k]: v }));
+  return (
+    <div className="form-section" style={{ marginTop: 18 }}>
+      <h3>{item ? "Editar ubicación" : "Nueva ubicación"}</h3>
+      <div className="admin-form-grid">
+        <Text
+          label="Nombre"
+          value={x.name}
+          onChange={(v) => {
+            u("name", v);
+            if (!item) u("slug", slugify(v));
+          }}
+        />
+        <Text
+          label="Slug"
+          value={x.slug}
+          onChange={(v) => u("slug", slugify(v))}
+        />
+        <Text label="Estado" value={x.state} onChange={(v) => u("state", v)} />
+        <Text
+          label="Imagen"
+          value={x.heroImage}
+          onChange={(v) => u("heroImage", v)}
+        />
+        <NumberField
+          label="Latitud"
+          value={x.latitude}
+          onChange={(v) => { if (v !== undefined) u("latitude", v); }}
+          step="0.000001"
+        />
+        <NumberField
+          label="Longitud"
+          value={x.longitude}
+          onChange={(v) => { if (v !== undefined) u("longitude", v); }}
+          step="0.000001"
+        />
+        <Area
+          label="Descripción"
+          value={x.description}
+          onChange={(v) => u("description", v)}
+        />
+        <Toggle
+          label="Destacada"
+          checked={x.featured}
+          onChange={(v) => u("featured", v)}
+        />
+      </div>
+      <div className="form-actions">
+        <button className="button secondary" onClick={onClose}>
+          Cancelar
+        </button>
+        <button
+          className="button"
+          onClick={() => {
+            locationService.save(x);
+            toast(item ? "Cambios guardados" : "Ubicación creada");
+            onClose();
+          }}
+        >
+          Guardar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function AdminGuidesPage() {
+  const { guides, deleteGuide } = useCasaViva();
+  const [remove, setRemove] = useState<Guide>();
+  const { toast } = useToast();
+  return (
+    <AdminLayout title="Guías">
+      <AdminTitle title="Guías" action="Nueva guía" href="/administracion/guias/nueva" />
+      <EntityTable
+        heads={[
+          "Imagen",
+          "Artículo",
+          "Categoría",
+          "Publicada",
+          "Fecha",
+          "Acciones",
+        ]}
+      >
+        {guides.map((g) => (
+          <tr key={g.id}>
+            <td>
+              <Image src={g.heroImage} alt="" width={70} height={50} />
+            </td>
+            <td>
+              <strong>{g.title}</strong>
+            </td>
+            <td>{g.category}</td>
+            <td>{g.published ? "Sí" : "Borrador"}</td>
+            <td>{formatDate(g.createdAt)}</td>
+            <td>
+              <div className="table-actions">
+                <Link href={`/administracion/guias/${g.id}`}>
+                  <Pencil size={16} />
+                </Link>
+                <button onClick={() => setRemove(g)}>
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </EntityTable>
+      <ConfirmDialog
+        open={!!remove}
+        onClose={() => setRemove(undefined)}
+        title="¿Eliminar esta guía?"
+        description="La guía se archivará y dejará de estar disponible públicamente."
+        onConfirm={() => {
+          if (remove) {
+            deleteGuide(remove.id);
+            toast("Guía archivada");
+          }
+        }}
+      />
+    </AdminLayout>
+  );
+}
+export function GuideFormPage({ id }: { id?: string }) {
+  const { guides } = useCasaViva();
+  const existing = guides.find((g) => g.id === id);
+  const router = useRouter();
+  const { toast } = useToast();
+  const [x, setX] = useState<Guide>(() =>
+    existing
+      ? structuredClone(existing)
+      : {
+          id: uid("guide"),
+          slug: "",
+          title: "",
+          excerpt: "",
+          content: "",
+          category: "zonas",
+          heroImage:
+            "https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1800&q=86",
+          published: false,
+          featured: false,
+          createdAt: new Date().toISOString(),
+          viewCount: 0,
+        },
+  );
+  const u = <K extends keyof Guide>(k: K, v: Guide[K]) =>
+    setX((a) => ({ ...a, [k]: v }));
+  return (
+    <AdminLayout title={existing ? "Editar guía" : "Nueva guía"}>
+      <AdminTitle title={x.title || "Nueva guía"} />
+      <FormSection title="Artículo">
+        <div className="admin-form-grid">
+          <Text
+            label="Título"
+            value={x.title}
+            onChange={(v) => {
+              u("title", v);
+              if (!existing) u("slug", slugify(v));
+            }}
+          />
+          <Text
+            label="Slug"
+            value={x.slug}
+            onChange={(v) => u("slug", slugify(v))}
+          />
+          <Select
+            label="Categoría"
+            value={x.category}
+            onChange={(v) => u("category", v as Guide["category"])}
+            options={[
+              ["Zonas", "zonas"],
+              ["Comprar casa", "compra"],
+              ["Hogar", "hogar"],
+              ["Mercado", "mercado"],
+            ]}
+          />
+          <Text
+            label="Imagen"
+            value={x.heroImage}
+            onChange={(v) => u("heroImage", v)}
+          />
+          <Area
+            label="Extracto"
+            value={x.excerpt}
+            onChange={(v) => u("excerpt", v)}
+          />
+          <label className="field full">
+            <span>Contenido (Markdown simple)</span>
+            <textarea
+              style={{ minHeight: 360 }}
+              value={x.content}
+              onChange={(e) => u("content", e.target.value)}
+            />
+          </label>
+          <Toggle
+            label="Publicada"
+            checked={x.published}
+            onChange={(v) => u("published", v)}
+          />
+          <Toggle
+            label="Destacada"
+            checked={x.featured}
+            onChange={(v) => u("featured", v)}
+          />
+        </div>
+      </FormSection>
+      <div className="admin-form-actions">
+        <Link className="button secondary" href="/administracion/guias">
+          Cancelar
+        </Link>
+        <button
+          className="button"
+          onClick={() => {
+            if (
+              !x.title ||
+              !x.slug ||
+              guides.some((g) => g.slug === x.slug && g.id !== x.id)
+            ) {
+              toast("Revisa el título y slug");
+              return;
+            }
+            guideService.save(x);
+            toast(existing ? "Cambios guardados" : "Guía creada");
+            router.push("/administracion/guias");
+          }}
+        >
+          Guardar guía
+        </button>
+      </div>
+    </AdminLayout>
+  );
+}
+
+export function AdminContentPage() {
+  const { homeContent, properties, locations, developments } = useCasaViva();
+  const [x, setX] = useState<HomeContent>(() => structuredClone(homeContent));
+  const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
+  const toggle = (
+    key:
+      | "featuredPropertyIds"
+      | "featuredLocationIds"
+      | "featuredDevelopmentIds",
+    id: string,
+  ) =>
+    setX((a) => ({
+      ...a,
+      [key]: a[key].includes(id)
+        ? a[key].filter((v) => v !== id)
+        : [...a[key], id],
+    }));
+  return (
+    <AdminLayout title="Inicio / Hero">
+      <AdminTitle title="Contenido de inicio" />
+      <FormSection title="Hero slides">
+        <p className="muted">
+          Activa y ordena las propiedades que encabezarán el inicio.
+        </p>
+        {x.heroSlides.map((s, i) => (
+          <div className="admin-list-row" key={s.id}>
+            <select
+              value={s.propertyId}
+              onChange={(e) =>
+                setX((a) => ({
+                  ...a,
+                  heroSlides: a.heroSlides.map((v, n) =>
+                    n === i ? { ...v, propertyId: e.target.value } : v,
+                  ),
+                }))
+              }
+            >
+              {properties.map((p) => (
+                <option value={p.id} key={p.id}>
+                  {p.title}
+                </option>
+              ))}
+            </select>
+            <input
+              value={s.title}
+              onChange={(e) =>
+                setX((a) => ({
+                  ...a,
+                  heroSlides: a.heroSlides.map((v, n) =>
+                    n === i ? { ...v, title: e.target.value } : v,
+                  ),
+                }))
+              }
+            />
+            <input
+              type="number"
+              value={s.order}
+              onChange={(e) =>
+                setX((a) => ({
+                  ...a,
+                  heroSlides: a.heroSlides.map((v, n) =>
+                    n === i ? { ...v, order: Number(e.target.value) } : v,
+                  ),
+                }))
+              }
+            />
+            <label>
+              <input
+                type="checkbox"
+                checked={s.active}
+                onChange={(e) =>
+                  setX((a) => ({
+                    ...a,
+                    heroSlides: a.heroSlides.map((v, n) =>
+                      n === i ? { ...v, active: e.target.checked } : v,
+                    ),
+                  }))
+                }
+              />{" "}
+              Activo
+            </label>
+          </div>
+        ))}
+      </FormSection>
+      <FormSection title="Propiedades destacadas">
+        <PickList
+          items={properties.map((p) => [p.id, p.title])}
+          selected={x.featuredPropertyIds}
+          onToggle={(id) => toggle("featuredPropertyIds", id)}
+        />
+      </FormSection>
+      <FormSection title="Ubicaciones destacadas">
+        <PickList
+          items={locations.map((l) => [l.id, l.name])}
+          selected={x.featuredLocationIds}
+          onToggle={(id) => toggle("featuredLocationIds", id)}
+        />
+      </FormSection>
+      <FormSection title="Desarrollos destacados">
+        <PickList
+          items={developments.map((d) => [d.id, d.name])}
+          selected={x.featuredDevelopmentIds}
+          onToggle={(id) => toggle("featuredDevelopmentIds", id)}
+        />
+      </FormSection>
+      <FormSection title="Bloque editorial">
+        <div className="admin-form-grid">
+          <Area
+            label="Titular"
+            value={x.editorialTitle}
+            onChange={(v) => setX((a) => ({ ...a, editorialTitle: v }))}
+          />
+          <Area
+            label="Descripción"
+            value={x.editorialBody}
+            onChange={(v) => setX((a) => ({ ...a, editorialBody: v }))}
+          />
+        </div>
+      </FormSection>
+      <div className="admin-form-actions">
+        <button
+          className="button"
+          disabled={saving}
+          onClick={async () => {
+            setSaving(true);
+            try { await homeContentService.save(x); toast("Cambios guardados"); }
+            catch (error) { toast(error instanceof Error ? error.message : "Error al guardar"); }
+            finally { setSaving(false); }
+          }}
+        >
+          {saving ? "Guardando…" : "Guardar contenido"}
+        </button>
+      </div>
+    </AdminLayout>
+  );
+}
+function PickList({
+  items,
+  selected,
+  onToggle,
+}: {
+  items: string[][];
+  selected: string[];
+  onToggle: (id: string) => void;
+}) {
+  return (
+    <div className="filter-checks">
+      {items.map(([id, label]) => (
+        <label className="check-chip" key={id}>
+          <input
+            type="checkbox"
+            checked={selected.includes(id)}
+            onChange={() => onToggle(id)}
+          />
+          <span>{label}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
+export function AdminInquiriesPage() {
+  const { inquiries, properties, setInquiryStatus } = useCasaViva();
+  return (
+    <AdminLayout title="Consultas">
+      <AdminTitle title="Consultas" />
+      <EntityTable
+        heads={[
+          "Fecha",
+          "Nombre",
+          "Teléfono",
+          "Correo",
+          "Propiedad",
+          "Mensaje",
+          "Estado",
+        ]}
+      >
+        {inquiries.map((i) => (
+          <tr key={i.id}>
+            <td>{formatDate(i.createdAt)}</td>
+            <td>
+              <strong>{i.name}</strong>
+            </td>
+            <td>{i.phone || "—"}</td>
+            <td>{i.email}</td>
+            <td>
+              {properties.find((p) => p.id === i.propertyId)?.title ||
+                i.subject ||
+                "Contacto"}
+            </td>
+            <td style={{ maxWidth: 300 }}>{i.message}</td>
+            <td>
+              <select
+                value={i.status}
+                onChange={(e) =>
+                  setInquiryStatus(i.id, e.target.value as typeof i.status)
+                }
+              >
+                <option value="new">Nueva</option>
+                <option value="viewed">Vista</option>
+                <option value="attended">Atendida</option>
+              </select>
+            </td>
+          </tr>
+        ))}
+      </EntityTable>
+    </AdminLayout>
+  );
+}
+
+function statusLabel(s: string) {
+  return s === "new" ? "Nueva" : s === "viewed" ? "Vista" : "Atendida";
+}
+function EntityTable({
+  heads,
+  children,
+}: {
+  heads: string[];
+  children: ReactNode;
+}) {
+  return (
+    <div className="admin-table-wrap">
+      <table className="admin-table">
+        <thead>
+          <tr>
+            {heads.map((h) => (
+              <th key={h}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+}
+export function AdminTable(props: { heads: string[]; children: ReactNode }) {
+  return <EntityTable {...props} />;
+}
+export function AdminToolbar({ children }: { children: ReactNode }) {
+  return <div className="admin-toolbar">{children}</div>;
+}
+export function AdminPagination() {
+  return (
+    <div className="admin-toolbar">
+      <span>Página 1 de 1</span>
+    </div>
+  );
+}
+export function FormSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="form-section">
+      <h3>{title}</h3>
+      {children}
+    </section>
+  );
+}
+function Text({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value?: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <input value={value || ""} onChange={(e) => onChange(e.target.value)} />
+    </label>
+  );
+}
+function NumberField({
+  label,
+  value,
+  onChange,
+  step = "1",
+}: {
+  label: string;
+  value?: number;
+  onChange: (v?: number) => void;
+  step?: string;
+}) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <input
+        type="number"
+        step={step}
+        value={value || ""}
+        onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
+      />
+    </label>
+  );
+}
+function Area({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <textarea value={value} onChange={(e) => onChange(e.target.value)} />
+    </label>
+  );
+}
+function Select({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: string[][];
+}) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map(([l, v]) => (
+          <option value={v} key={v}>
+            {l}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+export function PublishToggle({
+  label = "Publicado",
+  checked,
+  onChange,
+}: {
+  label?: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return <Toggle label={label} checked={checked} onChange={onChange} />;
+}
+function Toggle({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className="publish-toggle">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span>{label}</span>
+    </label>
+  );
+}
+export const PropertyForm = PropertyFormPage;
+export const DevelopmentForm = DevelopmentFormPage;
+export const LocationForm = LocationInline;
+export const GuideForm = GuideFormPage;

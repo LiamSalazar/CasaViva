@@ -1,0 +1,156 @@
+"use client";
+
+import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
+import { api, apiFetch, mapProperty } from "@/services/api";
+import type { Development, Guide, HomeContent, Inquiry, Location, Property, SavedSearch } from "@/types";
+
+interface CasaVivaState {
+  properties: Property[]; developments: Development[]; locations: Location[]; guides: Guide[]; inquiries: Inquiry[]; homeContent: HomeContent;
+  favorites: string[]; notes: Record<string, string>; savedSearches: SavedSearch[];
+  adminAuthenticated: boolean; hydrated: boolean; loading: boolean; error?: string;
+  initialize: () => Promise<void>; refreshAdmin: () => Promise<void>; setHydrated: (value: boolean) => void;
+  saveProperty: (item: Property) => Promise<void>; deleteProperty: (id: string) => Promise<void>; duplicateProperty: (id: string) => Promise<Property | undefined>;
+  saveDevelopment: (item: Development) => Promise<void>; deleteDevelopment: (id: string) => Promise<void>;
+  saveLocation: (item: Location) => Promise<void>; deleteLocation: (id: string) => Promise<void>;
+  saveGuide: (item: Guide) => Promise<void>; deleteGuide: (id: string) => Promise<void>;
+  addInquiry: (item: Inquiry) => Promise<void>; setInquiryStatus: (id: string, status: Inquiry["status"]) => Promise<void>;
+  setHomeContent: (item: HomeContent) => Promise<void>; toggleFavorite: (id: string) => void; clearFavorites: () => void;
+  setNote: (id: string, note: string) => void; saveSearch: (item: SavedSearch) => void; login: () => void; logout: () => Promise<void>; resetDemo: () => Promise<void>;
+}
+
+const emptyHome: HomeContent = { heroSlides: [], featuredPropertyIds: [], featuredLocationIds: [], featuredDevelopmentIds: [], editorialTitle: "", editorialBody: "", editorialImage: "/casaviva-placeholder.svg" };
+
+export const useCasaVivaStore = create<CasaVivaState>()(
+  persist(
+    (set, get) => ({
+      properties: [], developments: [], locations: [], guides: [], inquiries: [], homeContent: emptyHome,
+      favorites: [], notes: {}, savedSearches: [], adminAuthenticated: false, hydrated: false, loading: false,
+      setHydrated: (hydrated) => set({ hydrated }),
+      initialize: async () => {
+        if (get().loading) return;
+        set({ loading: true, error: undefined });
+        try {
+          const [properties, developments, locations, guides, home, session] = await Promise.all([api.publicListings(), api.developments(), api.locations(), api.guides(), api.home(), apiFetch("/api/v1/auth/me/").then(() => true).catch(() => false)]);
+          const featured: Property[] = (home.featured_listings || []).map(mapProperty);
+          const hero: Property[] = (home.hero || []).map(mapProperty);
+          const merged = [...properties];
+          [...featured, ...hero].forEach((p) => { if (!merged.some((x) => x.id === p.id)) merged.push(p); });
+          set({
+            properties: merged, developments, locations, guides,
+            homeContent: {
+              heroSlides: hero.map((p, index) => ({ id: `hero-${p.id}`, propertyId: p.id, eyebrow: p.developmentName || p.municipality || "Propiedad", title: p.title, subtitle: p.shortDescription, order: index, active: true })),
+              featuredPropertyIds: featured.map((p) => p.id), featuredLocationIds: locations.filter((x) => x.featured).map((x) => x.id), featuredDevelopmentIds: developments.filter((x) => x.featured).map((x) => x.id),
+              editorialTitle: home.content?.editorial_title || "", editorialBody: home.content?.editorial_body || "", editorialImage: home.content?.editorial_media || "/casaviva-placeholder.svg",
+            },
+            loading: false, hydrated: true, adminAuthenticated: session,
+          });
+        } catch (error) {
+          set({ loading: false, hydrated: true, error: error instanceof Error ? error.message : "No fue posible cargar CasaViva." });
+        }
+      },
+      refreshAdmin: async () => {
+        const [properties, developments, inquiries] = await Promise.all([api.adminListings(), api.adminDevelopments(), apiFetch<{ results: Array<any> }>("/api/v1/admin/inquiries/?page_size=100")]);
+        set({ properties, developments, inquiries: inquiries.results.map((x) => ({ id: x.id, createdAt: x.created_at, name: x.lead_name, email: "", message: x.message || "", source: "property", propertyId: x.listing || undefined, status: x.status.toLowerCase() })) });
+      },
+      saveProperty: async (item) => {
+        const current = get().properties.find((x) => x.id === item.id);
+        if (item.offeringId && current) {
+          const location = get().locations.find((x) => x.name === item.municipality && x.state === item.state);
+          const types = await apiFetch<{ results: Array<{ id: string; code: string }> }>("/api/v1/admin/property-types/?page_size=100");
+          const propertyTypeId = types.results.find((x) => x.code === item.propertyType)?.id;
+          if (!propertyTypeId) throw new Error("El tipo de propiedad seleccionado ya no está disponible.");
+          await apiFetch(`/api/v1/admin/offerings/${item.offeringId}/`, { method: "PATCH", body: JSON.stringify({
+            version: item.offeringVersion,
+            source_type: item.sourceType || "PRIVATE",
+            development_model: item.sourceType === "DEVELOPER" ? item.developmentModelId : null,
+            property_type: propertyTypeId,
+            state: item.sourceType === "PRIVATE" ? location?.stateId : null,
+            municipality: item.sourceType === "PRIVATE" ? location?.id : null,
+            street_address: item.address || null,
+            latitude: item.latitude,
+            longitude: item.longitude,
+            bedrooms_min: item.bedrooms,
+            bathrooms_total: item.bathrooms,
+            half_bathrooms: item.halfBathrooms,
+            parking_min: item.parkingSpaces,
+            levels_min: item.levels,
+            construction_area_min: item.constructionM2,
+            construction_area_basis: item.constructionM2 ? (item.constructionAreaBasis || "EXACT") : null,
+            land_area_min: item.landM2,
+            land_area_basis: item.landM2 ? (item.landAreaBasis || "EXACT") : null,
+            internal_reference: item.internal?.reference || null,
+            internal_notes: item.internal?.notes || null,
+            default_commission_rate: item.internal?.commissionPercent,
+            amenity_ids: item.amenityIds || [],
+            feature_values_input: item.featureValues || [],
+          }) });
+          await apiFetch(`/api/v1/admin/listings/${item.id}/`, { method: "PATCH", body: JSON.stringify({ title: item.title, slug: item.slug, short_description: item.shortDescription, description: item.description, is_featured: item.featured, version: item.version }) });
+          if (item.price !== current.price || item.priceLabel !== current.priceLabel) await apiFetch(`/api/v1/admin/listings/${item.id}/price/`, { method: "POST", body: JSON.stringify({ price_type: (item.priceLabel || "fixed").replace("on-request", "ON_REQUEST").toUpperCase(), amount_min: item.price, amount_max: item.priceMax }) });
+          if (item.status !== current.status) await apiFetch(`/api/v1/admin/listings/${item.id}/availability/`, { method: "POST", body: JSON.stringify({ status: item.status.toUpperCase() }) });
+          if (item.heroMediaId) await apiFetch(`/api/v1/admin/listings/${item.id}/media/`, { method: "POST", body: JSON.stringify({ media_id: item.heroMediaId, role: "HERO" }) });
+          if (item.published !== current.published) await apiFetch(`/api/v1/admin/listings/${item.id}/${item.published ? "publish" : "unpublish"}/`, { method: "POST", body: "{}" });
+        } else {
+          const location = get().locations.find((x) => x.name === item.municipality && x.state === item.state);
+          const types = await apiFetch<{ results: Array<{ id: string; code: string }> }>("/api/v1/admin/property-types/?page_size=100");
+          const propertyTypeId = types.results.find((x) => x.code === item.propertyType)?.id;
+          if (!propertyTypeId) throw new Error("El tipo de propiedad seleccionado ya no está disponible.");
+          const offering = await apiFetch<Record<string, any>>("/api/v1/admin/offerings/", { method: "POST", body: JSON.stringify({ source_type: item.sourceType || "PRIVATE", development_model: item.developmentModelId || null, property_type: propertyTypeId, state: item.sourceType === "DEVELOPER" ? null : location?.stateId, municipality: item.sourceType === "DEVELOPER" ? null : location?.id, bedrooms_min: item.bedrooms, bathrooms_total: item.bathrooms, half_bathrooms: item.halfBathrooms, parking_min: item.parkingSpaces, construction_area_min: item.constructionM2, construction_area_basis: item.constructionM2 !== undefined ? "EXACT" : null, land_area_min: item.landM2, land_area_basis: item.landM2 !== undefined ? "EXACT" : null, internal_reference: item.internal?.reference, internal_notes: item.internal?.notes, default_commission_rate: item.internal?.commissionPercent, amenity_ids: item.amenityIds || [], feature_values_input: item.featureValues || [] }) });
+          const listing = await apiFetch<Record<string, any>>("/api/v1/admin/listings/", { method: "POST", body: JSON.stringify({ offering: offering.id, title: item.title, slug: item.slug, short_description: item.shortDescription, description: item.description, is_featured: item.featured }) });
+          await apiFetch(`/api/v1/admin/listings/${listing.id}/price/`, { method: "POST", body: JSON.stringify({ price_type: item.price === undefined ? "ON_REQUEST" : (item.priceLabel || "fixed").toUpperCase(), amount_min: item.price }) });
+          await apiFetch(`/api/v1/admin/listings/${listing.id}/availability/`, { method: "POST", body: JSON.stringify({ status: item.status.toUpperCase() }) });
+          if (item.heroMediaId) await apiFetch(`/api/v1/admin/listings/${listing.id}/media/`, { method: "POST", body: JSON.stringify({ media_id: item.heroMediaId, role: "HERO" }) });
+          if (item.published) await apiFetch(`/api/v1/admin/listings/${listing.id}/publish/`, { method: "POST", body: "{}" });
+        }
+        await get().refreshAdmin();
+      },
+      deleteProperty: async (id) => { await apiFetch(`/api/v1/admin/listings/${id}/`, { method: "DELETE" }); await get().refreshAdmin(); },
+      duplicateProperty: async () => undefined,
+      saveDevelopment: async (item) => {
+        const current = get().developments.find((x) => x.id === item.id);
+        const payload = { developer: item.developerId, name: item.name, slug: item.slug, state: item.stateId, municipality: item.municipalityId, short_description: item.shortDescription || null, description: item.description || null, latitude: item.latitude, longitude: item.longitude, is_published: item.published, is_featured: item.featured, ...(current ? { version: item.version } : {}) };
+        await apiFetch(current ? `/api/v1/admin/developments/${item.id}/` : "/api/v1/admin/developments/", { method: current ? "PATCH" : "POST", body: JSON.stringify(payload) });
+        set({ developments: await api.adminDevelopments() });
+      },
+      deleteDevelopment: async (id) => { await apiFetch(`/api/v1/admin/developments/${id}/`, { method: "DELETE" }); set((s) => ({ developments: s.developments.filter((x) => x.id !== id) })); },
+      saveLocation: async () => { throw new Error("Administra la ubicación desde Catálogos."); },
+      deleteLocation: async () => { throw new Error("Las ubicaciones relacionadas no se eliminan directamente."); },
+      saveGuide: async (item) => {
+        const current = get().guides.find((x) => x.id === item.id);
+        const payload = { slug: item.slug, title: item.title, excerpt: item.excerpt, content: item.content, category: item.category, published: item.published, featured: item.featured, ...(current ? { version: (current as Guide & { version?: number }).version } : {}) };
+        await apiFetch(current ? `/api/v1/admin/guides/${item.id}/` : "/api/v1/admin/guides/", { method: current ? "PATCH" : "POST", body: JSON.stringify(payload) });
+        set({ guides: await api.guides() });
+      },
+      deleteGuide: async (id) => { await apiFetch(`/api/v1/admin/guides/${id}/`, { method: "DELETE" }); set((s) => ({ guides: s.guides.filter((x) => x.id !== id) })); },
+      addInquiry: async (item) => { await apiFetch("/api/v1/public/inquiries/", { method: "POST", body: JSON.stringify({ first_name: item.name, email: item.email, phone: item.phone, message: item.message, listing_slug: get().properties.find((x) => x.id === item.propertyId)?.slug, privacy_consent: true }) }); },
+      setInquiryStatus: async (id, status) => { await apiFetch(`/api/v1/admin/inquiries/${id}/`, { method: "PATCH", body: JSON.stringify({ status: status.toUpperCase() }) }); await get().refreshAdmin(); },
+      setHomeContent: async (item) => {
+        const records = await apiFetch<{ results: Array<{ id: string; version: number }> }>("/api/v1/admin/content/?page_size=10");
+        const currentContent = records.results[0];
+        const payload = { key: "main", hero_eyebrow: "Propiedades seleccionadas", hero_title: item.heroSlides[0]?.title || "Encuentra tu próximo hogar", editorial_title: item.editorialTitle, editorial_body: item.editorialBody, ...(currentContent ? { version: currentContent.version } : {}) };
+        await apiFetch(currentContent ? `/api/v1/admin/content/${currentContent.id}/` : "/api/v1/admin/content/", { method: currentContent ? "PATCH" : "POST", body: JSON.stringify(payload) });
+        const featuredListings = new Set([...item.featuredPropertyIds, ...item.heroSlides.filter((x) => x.active).map((x) => x.propertyId)]);
+        for (const listing of get().properties) {
+          const featured = featuredListings.has(listing.id);
+          if (listing.featured !== featured) await apiFetch(`/api/v1/admin/listings/${listing.id}/`, { method: "PATCH", body: JSON.stringify({ is_featured: featured, version: listing.version }) });
+        }
+        for (const development of get().developments) {
+          const featured = item.featuredDevelopmentIds.includes(development.id);
+          if (development.featured !== featured) await apiFetch(`/api/v1/admin/developments/${development.id}/`, { method: "PATCH", body: JSON.stringify({ is_featured: featured, version: development.version }) });
+        }
+        for (const location of get().locations) {
+          const featured = item.featuredLocationIds.includes(location.id);
+          if (location.featured !== featured) await apiFetch(`/api/v1/admin/municipalities/${location.id}/`, { method: "PATCH", body: JSON.stringify({ is_featured: featured }) });
+        }
+        set({ homeContent: item });
+        await get().refreshAdmin();
+      },
+      toggleFavorite: (id) => set((s) => ({ favorites: s.favorites.includes(id) ? s.favorites.filter((x) => x !== id) : [...s.favorites, id] })),
+      clearFavorites: () => set({ favorites: [] }), setNote: (id, note) => set((s) => ({ notes: { ...s.notes, [id]: note } })),
+      saveSearch: (item) => set((s) => ({ savedSearches: [item, ...s.savedSearches] })), login: () => set({ adminAuthenticated: true }),
+      logout: async () => { await apiFetch("/api/v1/auth/logout/", { method: "POST", body: "{}" }).catch(() => undefined); set({ adminAuthenticated: false, inquiries: [] }); },
+      resetDemo: async () => { throw new Error("Usa el comando seguro reset_demo_data en desarrollo."); },
+    }),
+    { name: "casaviva-browser-v2", storage: createJSONStorage(() => localStorage), partialize: (s) => ({ favorites: s.favorites, notes: s.notes, savedSearches: s.savedSearches }) },
+  ),
+);

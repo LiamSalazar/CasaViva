@@ -1,0 +1,139 @@
+from django.conf import settings
+from django.db import models
+from django.db.models import Q
+from apps.common.models import BusinessModel, UUIDTimeStampedModel
+from apps.catalog.models import PropertyOffering
+from apps.listings.models import Listing
+
+
+class Lead(BusinessModel):
+    class Status(models.TextChoices):
+        NEW = "NEW", "Nuevo"
+        CONTACTED = "CONTACTED", "Contactado"
+        INTERESTED = "INTERESTED", "Interesado"
+        VISIT_SCHEDULED = "VISIT_SCHEDULED", "Visita programada"
+        NEGOTIATING = "NEGOTIATING", "Negociación"
+        WON = "WON", "Ganado"
+        LOST = "LOST", "Perdido"
+
+    first_name = models.CharField(max_length=150)
+    last_name = models.CharField(max_length=150, null=True, blank=True)
+    email = models.EmailField(null=True, blank=True, db_index=True)
+    phone_raw = models.CharField(max_length=50, null=True, blank=True)
+    phone_normalized = models.CharField(max_length=20, null=True, blank=True, db_index=True)
+    status = models.CharField(max_length=25, choices=Status.choices, default=Status.NEW, db_index=True)
+    owner_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="owned_leads")
+    first_source = models.CharField(max_length=100, null=True, blank=True)
+    last_source = models.CharField(max_length=100, null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["status", "owner_user"]), models.Index(fields=["-created_at"])]
+        permissions = [("manage_leads", "Puede administrar clientes")]
+
+    def save(self, *args, **kwargs):
+        self.email = self.email.lower().strip() if self.email else None
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.first_name} {self.last_name or ''}".strip()
+
+
+class LeadStageHistory(UUIDTimeStampedModel):
+    lead = models.ForeignKey(Lead, on_delete=models.PROTECT, related_name="stage_history")
+    stage = models.CharField(max_length=25, choices=Lead.Status.choices)
+    started_at = models.DateTimeField()
+    ended_at = models.DateTimeField(null=True, blank=True)
+    changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["lead"], condition=Q(ended_at__isnull=True), name="one_current_lead_stage")]
+
+
+class Inquiry(UUIDTimeStampedModel):
+    class Channel(models.TextChoices):
+        WEB = "WEB", "Sitio web"
+        WHATSAPP = "WHATSAPP", "WhatsApp"
+        PHONE = "PHONE", "Teléfono"
+        EMAIL = "EMAIL", "Correo"
+        SOCIAL = "SOCIAL", "Red social"
+        MANUAL = "MANUAL", "Captura manual"
+    class Status(models.TextChoices):
+        NEW = "NEW", "Nueva"
+        VIEWED = "VIEWED", "Vista"
+        ATTENDED = "ATTENDED", "Atendida"
+
+    lead = models.ForeignKey(Lead, on_delete=models.PROTECT, related_name="inquiries")
+    listing = models.ForeignKey(Listing, null=True, blank=True, on_delete=models.SET_NULL, related_name="inquiries")
+    channel = models.CharField(max_length=15, choices=Channel.choices)
+    message = models.TextField(null=True, blank=True)
+    session_id = models.UUIDField(null=True, blank=True)
+    status = models.CharField(max_length=15, choices=Status.choices, default=Status.NEW)
+    assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="assigned_inquiries")
+
+    class Meta:
+        permissions = [("manage_inquiries", "Puede administrar consultas")]
+
+
+class LeadInterest(UUIDTimeStampedModel):
+    class Type(models.TextChoices):
+        VIEWED = "VIEWED", "Vista"
+        FAVORITED = "FAVORITED", "Favorita"
+        INQUIRED = "INQUIRED", "Consultada"
+        VISITED = "VISITED", "Visitada"
+    lead = models.ForeignKey(Lead, on_delete=models.PROTECT, related_name="interests")
+    offering = models.ForeignKey(PropertyOffering, on_delete=models.PROTECT, related_name="lead_interests")
+    interest_type = models.CharField(max_length=15, choices=Type.choices)
+
+
+class Visit(UUIDTimeStampedModel):
+    class Status(models.TextChoices):
+        SCHEDULED = "SCHEDULED", "Programada"
+        COMPLETED = "COMPLETED", "Realizada"
+        CANCELLED = "CANCELLED", "Cancelada"
+        NO_SHOW = "NO_SHOW", "No asistió"
+    lead = models.ForeignKey(Lead, on_delete=models.PROTECT, related_name="visits")
+    offering = models.ForeignKey(PropertyOffering, on_delete=models.PROTECT, related_name="visits")
+    scheduled_at = models.DateTimeField()
+    status = models.CharField(max_length=15, choices=Status.choices, default=Status.SCHEDULED)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="assigned_visits")
+    notes = models.TextField(null=True, blank=True)
+
+    class Meta:
+        permissions = [("manage_visits", "Puede administrar visitas")]
+
+
+class Sale(UUIDTimeStampedModel):
+    class Status(models.TextChoices):
+        CLOSED = "CLOSED", "Cerrada"
+        CANCELLED = "CANCELLED", "Cancelada"
+    lead = models.ForeignKey(Lead, on_delete=models.PROTECT, related_name="sales")
+    offering = models.ForeignKey(PropertyOffering, on_delete=models.PROTECT, related_name="sales")
+    listing = models.ForeignKey(Listing, null=True, blank=True, on_delete=models.PROTECT, related_name="sales")
+    sale_price = models.DecimalField(max_digits=14, decimal_places=2)
+    commission_rate = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    commission_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    closed_at = models.DateTimeField()
+    status = models.CharField(max_length=15, choices=Status.choices, default=Status.CLOSED)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_sales")
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=Q(sale_price__gte=0), name="sale_price_nonnegative")]
+        permissions = [("manage_sales", "Puede administrar ventas")]
+
+
+class PrivacyNoticeVersion(UUIDTimeStampedModel):
+    version = models.CharField(max_length=30, unique=True)
+    published_at = models.DateTimeField()
+    content_hash = models.CharField(max_length=64)
+    is_active = models.BooleanField(default=False)
+
+
+class ConsentRecord(UUIDTimeStampedModel):
+    lead = models.ForeignKey(Lead, null=True, blank=True, on_delete=models.PROTECT, related_name="consents")
+    visitor_id = models.UUIDField(null=True, blank=True)
+    privacy_notice_version = models.ForeignKey(PrivacyNoticeVersion, on_delete=models.PROTECT)
+    purpose = models.CharField(max_length=100)
+    granted = models.BooleanField()
+    granted_at = models.DateTimeField()
+    source = models.CharField(max_length=100)

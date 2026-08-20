@@ -1,0 +1,13 @@
+.env
+.venv/
+backend/.venv/
+backend/media/
+backend/staticfiles/
+backend/__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.next/
+node_modules/
