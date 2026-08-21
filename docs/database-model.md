@@ -13,7 +13,7 @@ Convenciones: entidades de negocio usan UUID; timestamps son `timestamptz` en Po
 | | `authz_version` | integer | No | Invalida sesiones al cambiar acceso. |
 | | `last_password_change_at` | timestamptz | No | Control de seguridad. |
 | `accounts_recoverycode` | `user_id` | UUID | No | FK CASCADE a usuario. |
-| | `code_hash`, `used_at` | varchar, timestamptz | Sí sólo uso | Hash SHA-256 y consumo único. |
+| | `code_hash`, `used_at` | varchar(256), timestamptz | Sí sólo uso | Hash adaptativo de Django y consumo único. |
 | `audit_auditevent` | `actor_user_id` | UUID | Sí | SET NULL; actor puede ser sistema. |
 | | `action`, `entity_type`, `entity_id` | varchar | No | Acción y objeto histórico. |
 | | `old_values`, `new_values` | JSONB | Sí | Snapshots sanitizados. |
@@ -24,7 +24,7 @@ Convenciones: entidades de negocio usan UUID; timestamps son `timestamptz` en Po
 | Tabla | Campos principales | Tipo / nulos | Relación / propósito |
 | --- | --- | --- | --- |
 | `geo_state` | `name`, `code`, `is_active` | varchar, no nulos | Catálogo de estados. |
-| `geo_municipality` | `state_id`, `name`, `is_active`, `is_featured` | UUID/varchar/boolean | PROTECT; único por estado; permite seleccionar ubicaciones destacadas. |
+| `geo_municipality` | `state_id`, `name`, `is_active`, `is_featured` | UUID/varchar/boolean | PROTECT; único por estado; catálogo geográfico estructural. |
 | `geo_locality` | `municipality_id`, `name` | UUID/varchar | Nivel opcional dependiente. |
 | `geo_neighborhood` | `municipality_id`, `locality_id`, `name`, `postal_code` | localidad nullable | Colonia/barrio; único por municipio. |
 | `common_sourcerecord` | `source_type`, `source_name`, `source_url`, `observed_at`, `notes`, `created_by_id` | URL/notas/actor nullable | Procedencia editable de información y precios. |
@@ -38,13 +38,13 @@ Convenciones: entidades de negocio usan UUID; timestamps son `timestamptz` en Po
 | `catalog_housingmodel` | `developer_id`, `name`, `internal_code?`, `slug`, `base_description?`, `is_active` | UUID/varchar/text | Identidad comercial; el nombre no es único. |
 | `catalog_developmentmodel` | `development_id`, `housing_model_id`, `display_name_override?`, `is_active` | UUID/varchar | Puente M:N; pareja activa única y desarrolladora compatible. |
 | `catalog_propertytype` | `code`, `name`, `is_active`, `sort_order` | UUID/varchar/integer | Catálogo editable. |
-| `catalog_propertyoffering` | `source_type`, `development_model_id?`, `variant_name?`, `property_type_id` | UUID/varchar | Oferta central. DEVELOPER exige relación; PRIVATE la prohíbe. |
+| `catalog_propertyoffering` | `source_type`, `condition?`, `development_model_id?`, `variant_name?`, `property_type_id` | UUID/varchar | Oferta central. Origen y condición (`NEW`/`USED`) son independientes; DEVELOPER exige relación y PRIVATE la prohíbe. |
 | | FKs geo, dirección, CP, lat/lon | nullable | Ubicación propia; puede heredarse del desarrollo. |
 | | recámaras, baños, estacionamiento, niveles | numeric nullable | Desconocido permanece NULL. |
 | | áreas min/max y `*_basis` | numeric/varchar nullable | EXACT, UP_TO, FROM, RANGE, UNKNOWN. |
 | | referencia/notas/comisión | nullable | Sólo administración; comisión numeric, no pública. |
 | `catalog_amenity` | `name`, `slug`, `category`, `is_active`, `sort_order` | no nulos | Catálogo de amenidades. |
-| `catalog_developmentamenity`, `catalog_offeringamenity` | dos FKs | no nulos | Puentes únicos a Amenity. |
+| `catalog_developmentamenity`, `catalog_offeringamenity` | dos FKs | no nulos | Puentes únicos a Amenity; `PropertyOffering.amenities` es M:N explícita mediante el segundo puente. |
 | `catalog_featuredefinition` | `code`, `label`, `category`, `data_type`, `unit?`, flags, orden | varios | Definición dinámica acotada. |
 | `catalog_featurechoice` | `definition_id`, `value`, `label`, `sort_order` | no nulos | Opción para CHOICE. |
 | `catalog_offeringfeaturevalue` | `offering_id`, `definition_id`, un valor tipado | sólo uno no nulo | Valor dinámico; pareja única. |
@@ -86,10 +86,11 @@ Todas las entidades editables anteriores incluyen `version` para optimistic lock
 | `marketing_marketingspend` | campaña, fecha, amount, currency | numeric | Gasto manual no negativo. |
 | `content_homecontent` | key, textos, media editorial? | texto/FK | Contenido editable del home. |
 | `content_guide` | slug, título, extracto, contenido, categoría, media?, flags, publicación? | texto/FK | Guías públicas administrables. |
+| `content_locationcontent` | `municipality_id`, `slug`, descripción, media?, destacado, latitud?, longitud? | UUID/text/decimal | Contenido editorial 1:1 de una ubicación; no contamina el catálogo geográfico. |
 
 ## Restricciones e índices relevantes
 
 - Únicos parciales: precio, disponibilidad y etapa de lead vigentes; pareja DevelopmentModel activa.
-- Checks: source type, montos/medidas/comisión no negativos, ON_REQUEST sin monto, venta/gasto no negativos.
+- Checks: source type, condición controlada por choices, coordenadas, rangos min/max, montos/medidas/comisión no negativos, comisión hasta 100, formas de precio y periodos temporales, venta/gasto no negativos.
 - B-tree: slugs, estados activos/publicados, geo, relaciones de offering, fecha/nombre de eventos, sesiones y relaciones analíticas.
 - `PROTECT` conserva ventas y relaciones de negocio; `SET_NULL` conserva hechos analíticos/consultas; `CASCADE` sólo elimina puentes o valores dependientes sin identidad histórica propia.

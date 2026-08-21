@@ -1,6 +1,7 @@
 from django.db import models
 from apps.common.models import BusinessModel
 from apps.media_library.models import MediaAsset
+from apps.geo.models import Municipality
 
 
 class HomeContent(BusinessModel):
@@ -28,3 +29,16 @@ class Guide(BusinessModel):
 
     def __str__(self):
         return self.title
+
+
+class LocationContent(BusinessModel):
+    municipality = models.OneToOneField(Municipality, on_delete=models.PROTECT, related_name="location_content")
+    slug = models.SlugField(max_length=230, unique=True)
+    description = models.TextField(blank=True)
+    hero_media = models.ForeignKey(MediaAsset, null=True, blank=True, on_delete=models.SET_NULL, related_name="location_heroes")
+    is_featured = models.BooleanField(default=False, db_index=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+
+    def __str__(self):
+        return self.municipality.name

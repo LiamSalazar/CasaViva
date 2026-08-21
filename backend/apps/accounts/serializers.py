@@ -55,4 +55,4 @@ class LoginSerializer(serializers.Serializer):
 
 
 class TotpSerializer(serializers.Serializer):
-    code = serializers.CharField(min_length=6, max_length=24)
+    code = serializers.CharField(min_length=6, max_length=64)

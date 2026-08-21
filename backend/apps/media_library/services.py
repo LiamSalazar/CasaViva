@@ -11,9 +11,17 @@ from rest_framework.exceptions import ValidationError
 from .models import MediaAsset
 
 ALLOWED = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
+ALLOWED_EXTENSIONS = {
+    "image/jpeg": {".jpg", ".jpeg"},
+    "image/png": {".png"},
+    "image/webp": {".webp"},
+    "application/pdf": {".pdf"},
+}
 
 
 def store_upload(upload, actor, media_type=MediaAsset.Type.IMAGE, alt_text=None):
+    if media_type not in MediaAsset.Type.values:
+        raise ValidationError("Selecciona un tipo de multimedia válido.")
     data = upload.read(settings.MAX_IMAGE_BYTES + 1)
     if len(data) > settings.MAX_IMAGE_BYTES:
         raise ValidationError("El archivo excede el tamaño permitido.")
@@ -21,6 +29,15 @@ def store_upload(upload, actor, media_type=MediaAsset.Type.IMAGE, alt_text=None)
     mime = kind.mime if kind else None
     if mime not in ALLOWED:
         raise ValidationError("El tipo de archivo no está permitido.")
+    original_extension = Path(upload.name).suffix.lower()
+    if original_extension not in ALLOWED_EXTENSIONS[mime]:
+        raise ValidationError("La extensión no coincide con el contenido del archivo.")
+    if mime == "application/pdf" and media_type not in (MediaAsset.Type.DOCUMENT, MediaAsset.Type.FLOORPLAN):
+        raise ValidationError("Un PDF sólo puede registrarse como documento o plano.")
+    if mime == "application/pdf" and not data.rstrip().endswith(b"%%EOF"):
+        raise ValidationError("El documento PDF está dañado.")
+    if mime.startswith("image/") and media_type not in (MediaAsset.Type.IMAGE, MediaAsset.Type.FLOORPLAN):
+        raise ValidationError("El tipo de multimedia no corresponde a una imagen.")
     width = height = None
     extension = kind.extension
     if mime.startswith("image/"):

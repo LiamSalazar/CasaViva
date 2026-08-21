@@ -1,4 +1,4 @@
-import type { Development, Guide, Location, Property } from "@/types";
+import type { ApiPage, Development, Guide, Location, Property, PropertyTypeOption, SearchOptions } from "@/types";
 
 const PLACEHOLDER = "/casaviva-placeholder.svg";
 
@@ -19,13 +19,26 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
-    const error = new Error(payload?.error?.message || payload?.detail || "No fue posible completar la solicitud.") as Error & { status?: number; fields?: Record<string, string[]> };
+    const firstFieldMessage = Object.values(payload || {}).flat().find((value) => typeof value === "string");
+    const error = new Error(payload?.error?.message || payload?.detail || firstFieldMessage || "No fue posible completar la solicitud.") as Error & { status?: number; fields?: Record<string, string[]> };
     error.status = response.status;
     error.fields = payload?.error?.fields;
     throw error;
   }
   if (response.status === 204) return undefined as T;
   return response.json();
+}
+
+export async function fetchAllPages<T>(path: string): Promise<T[]> {
+  const results: T[] = [];
+  let next: string | null = path;
+  while (next) {
+    const normalized: string = next.startsWith("http") ? `${new URL(next).pathname}${new URL(next).search}` : next;
+    const page: ApiPage<T> = await apiFetch<ApiPage<T>>(normalized);
+    results.push(...page.results);
+    next = page.next;
+  }
+  return results;
 }
 
 function numberOrUndefined(value: unknown): number | undefined {
@@ -43,7 +56,8 @@ export function mapProperty(raw: Record<string, any>): Property {
     title: p.title,
     operation: "sale",
     propertyType: p.propertyType,
-    condition: p.sourceType === "PRIVATE" ? "used" : "new",
+    propertyTypeName: p.propertyTypeName,
+    condition: p.condition || undefined,
     status: p.status || "available",
     published: Boolean(p.published),
     featured: Boolean(p.featured),
@@ -54,16 +68,27 @@ export function mapProperty(raw: Record<string, any>): Property {
     state: p.state || undefined,
     municipality: p.municipality || undefined,
     neighborhood: p.neighborhood || undefined,
+    address: offering?.street_address || undefined,
     latitude: numberOrUndefined(p.latitude),
     longitude: numberOrUndefined(p.longitude),
     bedrooms: numberOrUndefined(p.bedrooms),
+    bedroomsMax: numberOrUndefined(offering?.bedrooms_max),
     bathrooms: numberOrUndefined(p.bathrooms),
+    fullBathrooms: numberOrUndefined(offering?.full_bathrooms ?? p.fullBathrooms),
     halfBathrooms: numberOrUndefined(p.halfBathrooms),
     parkingSpaces: numberOrUndefined(p.parkingSpaces),
-    constructionM2: numberOrUndefined(p.constructionM2),
-    landM2: numberOrUndefined(p.landM2),
+    parkingMax: numberOrUndefined(offering?.parking_max),
+    levels: numberOrUndefined(offering?.levels_min),
+    levelsMax: numberOrUndefined(offering?.levels_max),
+    constructionM2: numberOrUndefined(offering?.construction_area_min ?? p.constructionM2),
+    landM2: numberOrUndefined(offering?.land_area_min ?? p.landM2),
+    constructionM2Max: numberOrUndefined(offering?.construction_area_max),
+    landM2Max: numberOrUndefined(offering?.land_area_max),
+    gardenM2: numberOrUndefined(offering?.garden_area_min),
+    gardenM2Max: numberOrUndefined(offering?.garden_area_max),
     constructionAreaBasis: p.constructionAreaBasis,
     landAreaBasis: p.landAreaBasis,
+    gardenAreaBasis: offering?.garden_area_basis || undefined,
     description: p.description || "",
     shortDescription: p.shortDescription || "",
     amenities: p.amenities || [],
@@ -87,9 +112,77 @@ export function mapProperty(raw: Record<string, any>): Property {
     propertyTypeId: offering?.property_type,
     stateId: offering?.state,
     municipalityId: offering?.municipality,
+    localityId: offering?.locality,
+    neighborhoodId: offering?.neighborhood,
+    postalCode: offering?.postal_code || undefined,
     developmentModelId: offering?.development_model,
+    mediaAssets: (raw.media || []).map((media: Record<string, any>) => ({ mediaId: media.media_id, role: media.role, sortOrder: media.sort_order, url: media.url })),
+    heroMediaId: raw.media?.find((media: Record<string, any>) => media.role === "HERO")?.media_id,
     archivedAt: raw.archived_at || undefined,
     internal: offering ? { commissionPercent: numberOrUndefined(offering.default_commission_rate), notes: offering.internal_notes || undefined, reference: offering.internal_reference || undefined } : undefined,
+  };
+}
+
+export function buildPropertyPayload(item: Property, propertyTypeId: string, location?: Location) {
+  const developerSource = item.sourceType === "DEVELOPER";
+  return {
+    offering_version: item.offeringVersion,
+    listing_version: item.version,
+    offering: {
+      source_type: item.sourceType || "PRIVATE",
+      condition: item.condition ? item.condition.toUpperCase() : null,
+      development_model: developerSource ? item.developmentModelId || null : null,
+      property_type: propertyTypeId,
+      state: developerSource ? null : item.stateId || location?.stateId || null,
+      municipality: developerSource ? null : item.municipalityId || location?.id || null,
+      locality: developerSource ? item.localityId || null : item.localityId || null,
+      neighborhood: item.neighborhoodId || null,
+      street_address: item.address || null,
+      postal_code: item.postalCode || null,
+      latitude: item.latitude ?? null,
+      longitude: item.longitude ?? null,
+      bedrooms_min: item.bedrooms ?? null,
+      bedrooms_max: item.bedroomsMax ?? null,
+      bathrooms_total: item.bathrooms ?? null,
+      full_bathrooms: item.fullBathrooms ?? null,
+      half_bathrooms: item.halfBathrooms ?? null,
+      parking_min: item.parkingSpaces ?? null,
+      parking_max: item.parkingMax ?? null,
+      levels_min: item.levels ?? null,
+      levels_max: item.levelsMax ?? null,
+      construction_area_min: item.constructionM2 ?? null,
+      construction_area_max: item.constructionM2Max ?? null,
+      construction_area_basis: item.constructionM2 !== undefined ? item.constructionAreaBasis || "EXACT" : null,
+      land_area_min: item.landM2 ?? null,
+      land_area_max: item.landM2Max ?? null,
+      land_area_basis: item.landM2 !== undefined ? item.landAreaBasis || "EXACT" : null,
+      garden_area_min: item.gardenM2 ?? null,
+      garden_area_max: item.gardenM2Max ?? null,
+      garden_area_basis: item.gardenM2 !== undefined || item.gardenM2Max !== undefined ? item.gardenAreaBasis || (item.gardenM2Max !== undefined ? "RANGE" : "EXACT") : null,
+      internal_reference: item.internal?.reference || null,
+      internal_notes: item.internal?.notes || null,
+      default_commission_rate: item.internal?.commissionPercent ?? null,
+      amenity_ids: item.amenityIds || [],
+      feature_values_input: item.featureValues || [],
+    },
+    listing: {
+      title: item.title,
+      slug: item.slug,
+      short_description: item.shortDescription,
+      description: item.description,
+      is_featured: item.featured,
+    },
+    price: {
+      price_type: item.price === undefined ? "ON_REQUEST" : (item.priceLabel || "fixed").replace("on-request", "ON_REQUEST").toUpperCase(),
+      amount_min: item.price ?? null,
+      amount_max: item.priceMax ?? null,
+      currency: item.currency || "MXN",
+    },
+    availability: { status: item.status.toUpperCase() },
+    media: item.mediaAssets?.length
+      ? item.mediaAssets.map((media) => ({ media_id: media.mediaId, role: media.role, sort_order: media.sortOrder }))
+      : item.heroMediaId ? [{ media_id: item.heroMediaId, role: "HERO", sort_order: 0 }] : [],
+    published: item.published,
   };
 }
 
@@ -101,23 +194,36 @@ export const api = {
   publicListings: async (params = "") => {
     return (await api.publicListingPage(params)).results;
   },
+  publicListingsAll: async (params = "") => {
+    const path = `/api/v1/public/listings/${params ? `?${params}` : ""}`;
+    return (await fetchAllPages<Record<string, any>>(path)).map(mapProperty);
+  },
+  similarListings: async (slug: string) => (await apiFetch<Record<string, any>[]>(`/api/v1/public/listings/${slug}/similar/`)).map(mapProperty),
+  favoriteListings: async (ids: string[]) => {
+    const results: Property[] = [];
+    for (let index = 0; index < ids.length; index += 100) {
+      const batch = ids.slice(index, index + 100);
+      results.push(...(await apiFetch<Record<string, any>[]>(`/api/v1/public/listings/favorites/?ids=${encodeURIComponent(batch.join(","))}`)).map(mapProperty));
+    }
+    return results;
+  },
   home: () => apiFetch<Record<string, any>>("/api/v1/public/home/"),
+  searchOptions: () => apiFetch<SearchOptions>("/api/v1/public/search-options/"),
   developments: async () => (await apiFetch<{ results: Development[] }>("/api/v1/public/developments/")).results.map((d) => ({ ...d, heroImage: d.heroImage || PLACEHOLDER, gallery: d.gallery?.length ? d.gallery : [PLACEHOLDER], createdAt: d.createdAt || "", updatedAt: d.updatedAt || "", propertyIds: [] })),
   locations: async () => {
-    const states = await apiFetch<Array<{ id: string; name: string; municipalities: Array<{ id: string; name: string; is_featured: boolean }> }>>("/api/v1/public/locations/");
-    return states.flatMap((s) => s.municipalities.map((m): Location => ({ id: m.id, stateId: s.id, slug: m.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-"), name: m.name, state: s.name, description: "", heroImage: PLACEHOLDER, featured: m.is_featured })));
+    const states = await apiFetch<Array<{ id: string; name: string; municipalities: Array<{ id: string; name: string; slug?: string; description: string; heroImage?: string; is_featured: boolean; latitude?: string; longitude?: string; content_id?: string }> }>>("/api/v1/public/locations/");
+    return states.flatMap((s) => s.municipalities.map((m): Location => ({ id: m.id, stateId: s.id, slug: m.slug || m.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-"), name: m.name, state: s.name, description: m.description || "", heroImage: m.heroImage || PLACEHOLDER, featured: m.is_featured, latitude: numberOrUndefined(m.latitude), longitude: numberOrUndefined(m.longitude), contentId: m.content_id, hasContent: Boolean(m.content_id) })));
   },
   guides: async () => {
     const data = await apiFetch<{ results: Guide[] }>("/api/v1/public/guides/");
     return data.results.map((g) => ({ ...g, heroImage: g.heroImage || PLACEHOLDER }));
   },
   adminListings: async () => {
-    const data = await apiFetch<{ results: Record<string, any>[] }>("/api/v1/admin/listings/?page_size=100");
-    return data.results.map(mapProperty);
+    return (await fetchAllPages<Record<string, any>>("/api/v1/admin/properties/?page_size=100")).map(mapProperty);
   },
   adminDevelopments: async () => {
-    const data = await apiFetch<{ results: Array<Record<string, any>> }>("/api/v1/admin/developments/?page_size=100");
-    return data.results.map((d): Development => ({
+    const data = await fetchAllPages<Record<string, any>>("/api/v1/admin/developments/?page_size=100");
+    return data.map((d): Development => ({
       id: d.id,
       slug: d.slug,
       name: d.name,
@@ -129,11 +235,19 @@ export const api = {
       stateId: d.state,
       municipality: d.municipality_name,
       municipalityId: d.municipality,
+      localityId: d.locality || undefined,
+      neighborhoodId: d.neighborhood || undefined,
+      neighborhood: d.neighborhood_name || undefined,
+      address: d.street_address || undefined,
+      postalCode: d.postal_code || undefined,
       latitude: numberOrUndefined(d.latitude),
       longitude: numberOrUndefined(d.longitude),
-      heroImage: PLACEHOLDER,
-      gallery: [],
-      amenities: [],
+      heroImage: d.media?.find((media: Record<string, any>) => media.role === "HERO")?.url || PLACEHOLDER,
+      gallery: d.media?.map((media: Record<string, any>) => media.url) || [],
+      amenities: d.amenities || [],
+      amenityIds: d.amenity_ids || [],
+      mediaAssets: (d.media || []).map((media: Record<string, any>) => ({ mediaId: media.media_id, role: media.role, sortOrder: media.sort_order, url: media.url })),
+      heroMediaId: d.media?.find((media: Record<string, any>) => media.role === "HERO")?.media_id,
       propertyIds: [],
       published: d.is_published,
       featured: d.is_featured,
@@ -142,4 +256,6 @@ export const api = {
       version: d.version,
     }));
   },
+  adminLocationContents: () => fetchAllPages<Record<string, any>>("/api/v1/admin/location-content/?page_size=100&archived=all"),
+  propertyTypes: () => fetchAllPages<PropertyTypeOption>("/api/v1/admin/property-types/?page_size=100&is_active=true"),
 };

@@ -34,12 +34,12 @@ class MunicipalityViewSet(GeoCatalogViewSet):
 
 
 class LocalityViewSet(GeoCatalogViewSet):
-    queryset = Locality.objects.select_related("municipality")
+    queryset = Locality.objects.select_related("municipality").order_by("name", "id")
     serializer_class = LocalityAdminSerializer
     filterset_fields = ["municipality", "is_active"]
 
 
 class NeighborhoodViewSet(GeoCatalogViewSet):
-    queryset = Neighborhood.objects.select_related("municipality", "locality")
+    queryset = Neighborhood.objects.select_related("municipality", "locality").order_by("name", "id")
     serializer_class = NeighborhoodAdminSerializer
     filterset_fields = ["municipality", "locality", "is_active"]

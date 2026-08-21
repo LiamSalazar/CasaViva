@@ -11,8 +11,8 @@ from apps.accounts import views as account_views
 from apps.analytics import views as analytics_views
 from apps.audit.views import AuditViewSet
 from apps.catalog import views as catalog_views
-from apps.catalog.models import Development
-from apps.content.views import GuideViewSet, HomeContentViewSet, PublicGuideViewSet
+from apps.catalog.models import Amenity, Development, PropertyType
+from apps.content.views import GuideViewSet, HomeContentViewSet, LocationContentViewSet, PublicGuideViewSet
 from apps.crm import views as crm_views
 from apps.geo.models import State, Municipality, Locality, Neighborhood
 from apps.geo import views as geo_views
@@ -28,8 +28,37 @@ from drf_spectacular.utils import extend_schema, OpenApiTypes
 def locations(request):
     states = []
     for state in State.objects.filter(is_active=True).prefetch_related("municipalities"):
-        states.append({"id": state.id, "name": state.name, "code": state.code, "municipalities": [{"id": m.id, "name": m.name, "is_featured": m.is_featured} for m in state.municipalities.filter(is_active=True)]})
+        municipalities = []
+        for municipality in state.municipalities.filter(is_active=True).select_related("location_content__hero_media"):
+            content = getattr(municipality, "location_content", None)
+            if content and content.archived_at:
+                content = None
+            municipalities.append({
+                "id": municipality.id, "name": municipality.name,
+                "slug": content.slug if content else None,
+                "description": content.description if content else "",
+                "heroImage": f"/media/{content.hero_media.storage_key}" if content and content.hero_media_id else None,
+                "is_featured": content.is_featured if content else False,
+                "latitude": content.latitude if content else None,
+                "longitude": content.longitude if content else None,
+                "content_id": content.id if content else None,
+            })
+        states.append({"id": state.id, "name": state.name, "code": state.code, "municipalities": municipalities})
     return Response(states)
+
+
+@extend_schema(operation_id="public_search_options", responses={200: OpenApiTypes.OBJECT})
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def search_options(request):
+    return Response({
+        "property_types": list(PropertyType.objects.filter(is_active=True).values("id", "code", "name").order_by("sort_order", "name")),
+        "amenities": list(Amenity.objects.filter(is_active=True).values("id", "slug", "name", "category").order_by("sort_order", "name")),
+        "locations": [
+            {"id": municipality.id, "name": municipality.name, "state_id": municipality.state_id, "state": municipality.state.name}
+            for municipality in Municipality.objects.filter(is_active=True).select_related("state").order_by("state__name", "name")
+        ],
+    })
 
 
 @extend_schema(operation_id="public_developments", responses={200: OpenApiTypes.OBJECT})
@@ -58,6 +87,7 @@ admin_router.register("models", catalog_views.HousingModelViewSet)
 admin_router.register("development-models", catalog_views.DevelopmentModelViewSet)
 admin_router.register("offerings", catalog_views.OfferingViewSet)
 admin_router.register("listings", listing_views.ListingViewSet)
+admin_router.register("properties", listing_views.PropertyAggregateViewSet, basename="admin-property")
 admin_router.register("property-types", catalog_views.PropertyTypeViewSet)
 admin_router.register("amenities", catalog_views.AmenityViewSet)
 admin_router.register("features", catalog_views.FeatureViewSet)
@@ -71,6 +101,7 @@ admin_router.register("visits", crm_views.VisitViewSet)
 admin_router.register("sales", crm_views.SaleViewSet)
 admin_router.register("guides", GuideViewSet)
 admin_router.register("content", HomeContentViewSet)
+admin_router.register("location-content", LocationContentViewSet)
 admin_router.register("audit", AuditViewSet)
 admin_router.register("users", account_views.UserViewSet)
 admin_router.register("marketing-campaigns", CampaignViewSet)
@@ -84,11 +115,13 @@ urlpatterns = [
     path("api/v1/auth/me/", account_views.me),
     path("api/v1/public/home/", listing_views.public_home),
     path("api/v1/public/locations/", locations),
+    path("api/v1/public/search-options/", search_options),
     path("api/v1/public/developments/", developments),
     path("api/v1/public/developments/<slug:slug>/", developments),
     path("api/v1/public/inquiries/", crm_views.public_inquiry),
     path("api/v1/public/analytics/session/", analytics_views.start_session),
     path("api/v1/public/analytics/events/", analytics_views.ingest_event),
+    path("api/v1/redirect/<path:path>/", listing_views.slug_redirect),
     path("api/v1/public/", include(public_router.urls)),
     path("api/v1/admin/bi/overview/", analytics_views.bi_overview),
     path("api/v1/admin/bi/listings/", analytics_views.bi_listing_performance),

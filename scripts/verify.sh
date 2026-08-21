@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repository_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+test_compose="$repository_dir/docker-compose.test.yml"
+backend_python="$repository_dir/backend/.venv/bin/python"
+backend_pytest="$repository_dir/backend/.venv/bin/pytest"
+
+export POSTGRES_TEST_DB="${POSTGRES_TEST_DB:-casaviva_test}"
+if [[ "${POSTGRES_TEST_DB,,}" != *test* ]]; then
+  echo "ABORTADO: POSTGRES_TEST_DB debe contener 'test' y nunca puede apuntar a la base de desarrollo/producción." >&2
+  exit 2
+fi
+if [[ "$POSTGRES_TEST_DB" != "casaviva_test" ]]; then
+  echo "ABORTADO: este Compose aislado sólo admite casaviva_test." >&2
+  exit 2
+fi
+
+export DJANGO_SETTINGS_MODULE=config.settings.postgres_test
+export POSTGRES_TEST_HOST=127.0.0.1
+export POSTGRES_TEST_PORT=55432
+export POSTGRES_TEST_PASSWORD=casaviva-postgres-test
+export E2E_ADMIN_PASSWORD='CasaViva-E2E-only-2026!'
+export E2E_TOTP_SECRET='3132333435363738393031323334353637383930'
+export CASAVIVA_E2E=1
+
+cleanup() {
+  docker compose -f "$test_compose" down -v --remove-orphans >/dev/null 2>&1 || true
+}
+trap cleanup EXIT INT TERM
+
+cd "$repository_dir"
+cleanup
+docker compose -f "$test_compose" up -d --wait postgres-test
+
+export POSTGRES_TEST_USER=casaviva_migrator
+export POSTGRES_TEST_PASSWORD=casaviva-migrator-test
+"$backend_python" backend/manage.py migrate --noinput
+"$backend_python" backend/manage.py seed_system
+"$backend_python" backend/manage.py seed_system
+"$backend_python" backend/manage.py seed_reference_catalog
+"$backend_python" backend/manage.py seed_reference_catalog
+"$backend_python" backend/manage.py harden_database_roles
+"$backend_python" backend/manage.py makemigrations --check --dry-run
+
+cd "$repository_dir/backend"
+DJANGO_SETTINGS_MODULE=config.settings.test "$backend_pytest" \
+  --cov=apps --cov-branch --cov-fail-under=85 \
+  --cov-report=term --cov-report=json:coverage.json
+
+export POSTGRES_TEST_USER=postgres
+export POSTGRES_TEST_PASSWORD=casaviva-postgres-test
+DJANGO_SETTINGS_MODULE=config.settings.postgres_test "$backend_pytest" --create-db
+
+DJANGO_SETTINGS_MODULE=config.settings.test "$backend_python" manage.py check
+DJANGO_SETTINGS_MODULE=config.settings.test "$backend_python" manage.py spectacular \
+  --file /tmp/casaviva-openapi.yml --validate
+
+DJANGO_SETTINGS_MODULE=config.settings.production \
+DJANGO_SECRET_KEY='verify-only-not-a-real-secret-5d377ab8dd7c90b3bd83112d5375fa57' \
+ALLOWED_HOSTS='example.test' \
+CSRF_TRUSTED_ORIGINS='https://example.test' \
+"$backend_python" manage.py check --deploy
+
+cd "$repository_dir"
+POSTGRES_SUPERUSER_PASSWORD=verify-only \
+CASAVIVA_APP_PASSWORD=verify-only \
+CASAVIVA_MIGRATOR_PASSWORD=verify-only \
+CASAVIVA_READONLY_PASSWORD=verify-only \
+CASAVIVA_BACKUP_PASSWORD=verify-only \
+docker compose config --quiet
+docker compose -f "$test_compose" config --quiet
+
+npm run lint
+npm run typecheck
+npm run build
+npm audit --omit=dev
+
+export POSTGRES_TEST_USER=casaviva_app
+export POSTGRES_TEST_PASSWORD=casaviva-app-test
+"$backend_python" backend/manage.py setup_e2e
+npm run test:e2e

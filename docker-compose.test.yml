@@ -1,0 +1,25 @@
+services:
+  postgres-test:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: casaviva_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: casaviva-postgres-test
+      PGDATA: /var/lib/postgresql/data/pgdata
+      CASAVIVA_APP_PASSWORD: casaviva-app-test
+      CASAVIVA_MIGRATOR_PASSWORD: casaviva-migrator-test
+      CASAVIVA_READONLY_PASSWORD: casaviva-readonly-test
+      CASAVIVA_BACKUP_PASSWORD: casaviva-backup-test
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - casaviva_postgres_test:/var/lib/postgresql/data
+      - ./docker/postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-casaviva-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d casaviva_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  casaviva_postgres_test:

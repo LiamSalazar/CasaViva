@@ -1,4 +1,3 @@
-import type { PropertyType } from "@/types";
 
 export const FEATURES = {
   sellProperty: false,
@@ -30,7 +29,7 @@ export const slugify = (value: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
-export const propertyTypeLabel: Record<PropertyType, string> = {
+export const propertyTypeLabel: Record<string, string> = {
   house: "Casa",
   apartment: "Departamento",
   land: "Terreno",

@@ -27,9 +27,19 @@ class PriceRecord(UUIDTimeStampedModel):
     class Meta:
         constraints = [
             models.UniqueConstraint(fields=["offering"], condition=Q(effective_to__isnull=True), name="one_current_price_per_offering"),
+            models.CheckConstraint(condition=Q(price_type__in=["FIXED", "FROM", "RANGE", "ON_REQUEST"]), name="price_type_valid"),
             models.CheckConstraint(condition=Q(amount_min__gte=0) | Q(amount_min__isnull=True), name="price_min_nonnegative"),
             models.CheckConstraint(condition=Q(amount_max__gte=0) | Q(amount_max__isnull=True), name="price_max_nonnegative"),
-            models.CheckConstraint(condition=Q(price_type="ON_REQUEST", amount_min__isnull=True, amount_max__isnull=True) | ~Q(price_type="ON_REQUEST"), name="on_request_has_no_amount"),
+            models.CheckConstraint(condition=Q(amount_max__gte=models.F("amount_min")) | Q(amount_max__isnull=True) | Q(amount_min__isnull=True), name="price_range_valid"),
+            models.CheckConstraint(
+                condition=(
+                    Q(price_type="ON_REQUEST", amount_min__isnull=True, amount_max__isnull=True)
+                    | Q(price_type__in=["FIXED", "FROM"], amount_min__isnull=False)
+                    | Q(price_type="RANGE", amount_min__isnull=False, amount_max__isnull=False)
+                ),
+                name="price_amounts_match_type",
+            ),
+            models.CheckConstraint(condition=Q(effective_to__gt=models.F("effective_from")) | Q(effective_to__isnull=True), name="price_period_valid"),
         ]
         indexes = [models.Index(fields=["offering", "-effective_from"])]
 
@@ -49,7 +59,11 @@ class AvailabilityRecord(UUIDTimeStampedModel):
     notes = models.TextField(null=True, blank=True)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=["offering"], condition=Q(effective_to__isnull=True), name="one_current_availability_per_offering")]
+        constraints = [
+            models.UniqueConstraint(fields=["offering"], condition=Q(effective_to__isnull=True), name="one_current_availability_per_offering"),
+            models.CheckConstraint(condition=Q(status__in=["AVAILABLE", "TEMPORARILY_UNAVAILABLE", "RESERVED", "SOLD"]), name="availability_status_valid"),
+            models.CheckConstraint(condition=Q(effective_to__gt=models.F("effective_from")) | Q(effective_to__isnull=True), name="availability_period_valid"),
+        ]
         indexes = [models.Index(fields=["offering", "-effective_from"])]
 
 

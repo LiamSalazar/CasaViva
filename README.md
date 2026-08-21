@@ -54,17 +54,29 @@ npm run dev
 
 Abre `http://localhost:3000`. La administración está en `http://localhost:3000/administracion/acceso`. No hay credenciales versionadas: `bootstrap_founders` solicita los datos de Liam, Ana y Alfredo o lee las variables documentadas en `.env.example`.
 
-## Quality gates
+## Pruebas rápidas
 
 ```bash
 cd backend
-.venv/bin/pytest --cov=apps --cov-fail-under=70
+.venv/bin/pytest --cov=apps --cov-branch
 cd ..
 backend/.venv/bin/python backend/manage.py check --settings=config.settings.test
 npm run lint
-npx tsc --noEmit
+npm run typecheck
 npm run build
 ```
+
+Esta suite usa SQLite en memoria para retroalimentación rápida. No sustituye las pruebas de restricciones, concurrencia ni roles de PostgreSQL.
+
+## Verificación completa
+
+```bash
+./scripts/verify.sh
+```
+
+El script crea exclusivamente `casaviva_test` en el Compose de pruebas, comprueba el nombre antes de cualquier limpieza, migra una base PostgreSQL 18 vacía, ejecuta ambos seeds dos veces, endurece y prueba los roles, corre la suite completa sobre SQLite y PostgreSQL, valida OpenAPI y los checks de despliegue, compila Next.js y ejecuta Playwright contra Next + Django + PostgreSQL reales. Un `trap` elimina únicamente contenedores y volumen de pruebas al terminar; nunca ejecuta `down -v` sobre el Compose de desarrollo.
+
+Las credenciales de esta infraestructura son constantes de prueba aisladas. Playwright recibe usuarios `@example.test` y un secreto TOTP temporal mediante variables del propio script; no existe bypass MFA y nada se habilita en producción.
 
 `reset_demo_data` sólo funciona con `DEBUG=True`. Los seeds son idempotentes: crean faltantes y no reemplazan correcciones humanas.
 

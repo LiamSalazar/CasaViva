@@ -67,7 +67,7 @@ export function PropertyListCard({
           <FavoriteButton id={property.id} />
         </div>
         <span className="property-type">
-          {propertyTypeLabel[property.propertyType]} en venta ·{" "}
+          {property.propertyTypeName || propertyTypeLabel[property.propertyType] || property.propertyType} en venta ·{" "}
           {formatLocation(property.municipality, property.state)}
         </span>
         <h2>{property.title}</h2>
@@ -106,7 +106,7 @@ export function PropertyGridCard({ property }: { property: Property }) {
       </div>
       <div className="property-card-body">
         <span className="property-type">
-          {propertyTypeLabel[property.propertyType]} · {property.municipality}
+          {property.propertyTypeName || propertyTypeLabel[property.propertyType] || property.propertyType} · {property.municipality}
         </span>
         <h3>{property.title}</h3>
         <div className="property-price">
@@ -348,7 +348,7 @@ export function PropertyDetails({ property }: { property: Property }) {
     ["Terreno", property.landM2 && formatArea(property.landM2)],
     ["Estacionamientos", property.parkingSpaces],
     ["Niveles", property.levels],
-    ["Condición", property.condition === "new" ? "Nueva" : "Usada"],
+    ["Condición", property.condition ? (property.condition === "new" ? "Nueva" : "Usada") : undefined],
   ];
   return (
     <div className="details-grid">

@@ -20,7 +20,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="es">
+    <html lang="es" data-scroll-behavior="smooth">
       <body>
         <DataProvider><Suspense fallback={null}><AnalyticsProvider /></Suspense><ToastProvider>{children}</ToastProvider></DataProvider>
       </body>

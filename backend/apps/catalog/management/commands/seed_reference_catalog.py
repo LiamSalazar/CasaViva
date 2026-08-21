@@ -7,6 +7,7 @@ from apps.catalog.models import Developer, Development, DevelopmentModel, Housin
 from apps.common.models import SourceRecord
 from apps.geo.models import State, Municipality
 from apps.listings.models import AvailabilityRecord, Listing, PriceRecord
+from apps.content.models import LocationContent
 
 
 DATA = [
@@ -85,7 +86,7 @@ class Command(BaseCommand):
             link, _ = DevelopmentModel.all_objects.get_or_create(development=developments[dev_key], housing_model=models[model_key], defaults={"is_active": True})
             reference = f"seed:{slugify(development_name)}:{slugify(model_name)}:{slugify(variant or 'base')}"
             offering, was_created = PropertyOffering.all_objects.get_or_create(internal_reference=reference, defaults={
-                "source_type": "DEVELOPER", "development_model": link, "variant_name": variant,
+                "source_type": "DEVELOPER", "condition": "NEW", "development_model": link, "variant_name": variant,
                 "property_type": apartment if type_code == "apartment" else house,
                 "bedrooms_min": beds, "bathrooms_total": baths, "parking_min": parking,
                 "construction_area_max": construction if basis == "UP_TO" else None,
@@ -113,4 +114,11 @@ class Command(BaseCommand):
             for name in names:
                 model, _ = HousingModel.all_objects.get_or_create(slug=f"davivir-{slugify(name)}", defaults={"developer": devs["DaVivir"], "name": name})
                 DevelopmentModel.all_objects.get_or_create(development=development, housing_model=model)
+        for municipality in Municipality.objects.filter(is_featured=True).select_related("state"):
+            base_slug = slugify(municipality.name)
+            location_slug = base_slug if not LocationContent.all_objects.filter(slug=base_slug).exclude(municipality=municipality).exists() else f"{base_slug}-{slugify(municipality.state.code)}"
+            LocationContent.all_objects.get_or_create(
+                municipality=municipality,
+                defaults={"slug": location_slug, "is_featured": True, "description": ""},
+            )
         self.stdout.write(self.style.SUCCESS(f"Catálogo listo: {created} ofertas nuevas; registros existentes no se modificaron."))

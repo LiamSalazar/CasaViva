@@ -1,7 +1,9 @@
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from django.db.models import Count, Sum, Q
 from django.db.models.functions import TruncDate
 from django.utils import timezone
+from django.utils.dateparse import parse_date
+from rest_framework.exceptions import ValidationError
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -46,8 +48,33 @@ def ingest_event(request):
 
 
 def period_bounds(request):
-    days = min(max(int(request.query_params.get("days", 30)), 1), 366)
-    end = timezone.now(); start = end - timedelta(days=days); previous = start - timedelta(days=days)
+    now = timezone.now()
+    period = request.query_params.get("period")
+    if period == "current_month":
+        end = now
+        start = timezone.localtime(now).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    elif period == "previous_month":
+        end = timezone.localtime(now).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        prior_day = end - timedelta(days=1)
+        start = prior_day.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    elif period == "custom":
+        start_date = parse_date(request.query_params.get("start", ""))
+        end_date = parse_date(request.query_params.get("end", ""))
+        if not start_date or not end_date or end_date < start_date:
+            raise ValidationError({"period": "Captura un rango de fechas válido."})
+        zone = timezone.get_current_timezone()
+        start = timezone.make_aware(datetime.combine(start_date, time.min), zone)
+        end = timezone.make_aware(datetime.combine(end_date + timedelta(days=1), time.min), zone)
+    else:
+        raw_days = request.query_params.get("days", {"7d": "7", "30d": "30", "90d": "90"}.get(period, "30"))
+        try:
+            days = min(max(int(raw_days), 1), 366)
+        except (TypeError, ValueError):
+            raise ValidationError({"days": "Selecciona un periodo válido."})
+        end = now
+        start = end - timedelta(days=days)
+    duration = end - start
+    previous = start - duration
     return start, end, previous
 
 @extend_schema(responses={200: OpenApiTypes.OBJECT})
@@ -65,8 +92,13 @@ def bi_overview(request):
             "sales": Sale.objects.filter(closed_at__gte=a, closed_at__lt=b, status="CLOSED").count(),
         }
     current, prior = counts(start, end), counts(previous, start)
-    traffic = list(WebSession.objects.filter(started_at__gte=start).annotate(date=TruncDate("started_at")).values("date").annotate(sessions=Count("id"), visitors=Count("visitor_id", distinct=True)).order_by("date"))
-    funnel = [{"label": labels, "value": current[key]} for labels, key in [("Sesiones", "sessions"), ("Propiedades vistas", "listing_views"), ("Consultas", "inquiries"), ("Visitas", "visits"), ("Ventas", "sales")]]
+    traffic = list(WebSession.objects.filter(started_at__gte=start, started_at__lt=end).annotate(date=TruncDate("started_at")).values("date").annotate(sessions=Count("id"), visitors=Count("visitor_id", distinct=True)).order_by("date"))
+    funnel = []
+    previous_value = None
+    for label, key in [("Sesiones", "sessions"), ("Propiedades vistas", "listing_views"), ("Consultas", "inquiries"), ("Visitas", "visits"), ("Ventas", "sales")]:
+        value = current[key]
+        funnel.append({"label": label, "value": value, "conversion_from_previous": round(value / previous_value * 100, 2) if previous_value else None})
+        previous_value = value
     inventory = {"registered": Listing.all_objects.count(), "published": Listing.objects.filter(is_published=True).count(), "unpublished": Listing.objects.filter(is_published=False).count(), "archived": Listing.all_objects.filter(archived_at__isnull=False).count()}
     return Response({"period": {"start": start, "end": end}, "current": current, "previous": prior, "traffic": traffic, "funnel": funnel, "inventory": inventory})
 
@@ -74,8 +106,8 @@ def bi_overview(request):
 @api_view(["GET"])
 @permission_classes([IsMfaVerifiedAdmin, CanViewBI])
 def bi_listing_performance(request):
-    start, _, _ = period_bounds(request)
-    rows = Listing.all_objects.annotate(views=Count("analytics_events", filter=Q(analytics_events__event_name="listing_viewed", analytics_events__occurred_at__gte=start), distinct=True), inquiries_count=Count("inquiries", filter=Q(inquiries__created_at__gte=start), distinct=True), sales_count=Count("sales", filter=Q(sales__closed_at__gte=start), distinct=True)).values("id", "title", "views", "inquiries_count", "sales_count").order_by("-views")[:100]
+    start, end, _ = period_bounds(request)
+    rows = Listing.all_objects.annotate(views=Count("analytics_events", filter=Q(analytics_events__event_name="listing_viewed", analytics_events__occurred_at__gte=start, analytics_events__occurred_at__lt=end), distinct=True), inquiries_count=Count("inquiries", filter=Q(inquiries__created_at__gte=start, inquiries__created_at__lt=end), distinct=True), sales_count=Count("sales", filter=Q(sales__closed_at__gte=start, sales__closed_at__lt=end), distinct=True)).values("id", "title", "views", "inquiries_count", "sales_count").order_by("-views")[:100]
     return Response(list(rows))
 
 
@@ -83,10 +115,10 @@ def bi_listing_performance(request):
 @api_view(["GET"])
 @permission_classes([IsMfaVerifiedAdmin, CanViewBI])
 def bi_search_demand(request):
-    start, _, _ = period_bounds(request)
+    start, end, _ = period_bounds(request)
     municipality_ids, price_ranges, bedrooms, property_types = {}, {}, {}, {}
     filters, no_results = {}, 0
-    for properties in AnalyticsEvent.objects.filter(occurred_at__gte=start, event_name="search_performed").values_list("properties", flat=True):
+    for properties in AnalyticsEvent.objects.filter(occurred_at__gte=start, occurred_at__lt=end, event_name="search_performed").values_list("properties", flat=True):
         if properties.get("result_count") == 0:
             no_results += 1
         for value in properties.get("municipality_ids") or []:
@@ -110,18 +142,19 @@ def bi_search_demand(request):
 @api_view(["GET"])
 @permission_classes([IsMfaVerifiedAdmin, CanViewBI])
 def bi_marketing(request):
-    start, _, _ = period_bounds(request)
-    groups = WebSession.objects.filter(started_at__gte=start).values("utm_source", "utm_medium", "utm_campaign", "utm_content").annotate(sessions=Count("id")).order_by("-sessions")[:50]
+    start, end, _ = period_bounds(request)
+    groups = WebSession.objects.filter(started_at__gte=start, started_at__lt=end).values("utm_source", "utm_medium", "utm_campaign", "utm_content").annotate(sessions=Count("id")).order_by("-sessions")[:50]
     result = []
     for group in groups:
         criteria = {key: group[key] for key in ("utm_source", "utm_medium", "utm_campaign", "utm_content")}
-        session_ids = WebSession.objects.filter(started_at__gte=start, **criteria).values_list("id", flat=True)
-        inquiries = Inquiry.objects.filter(created_at__gte=start, session_id__in=session_ids).count()
+        session_ids = WebSession.objects.filter(started_at__gte=start, started_at__lt=end, **criteria).values_list("id", flat=True)
+        inquiries = Inquiry.objects.filter(created_at__gte=start, created_at__lt=end, session_id__in=session_ids).count()
         lead_ids = WebSession.objects.filter(id__in=session_ids, lead__isnull=False).values_list("lead_id", flat=True)
-        visits = Visit.objects.filter(created_at__gte=start, lead_id__in=lead_ids).count()
-        sales = Sale.objects.filter(closed_at__gte=start, lead_id__in=lead_ids, status="CLOSED").count()
+        visits = Visit.objects.filter(created_at__gte=start, created_at__lt=end, lead_id__in=lead_ids).count()
+        sales = Sale.objects.filter(closed_at__gte=start, closed_at__lt=end, lead_id__in=lead_ids, status="CLOSED").count()
         campaign = MarketingCampaign.objects.filter(utm_campaign=group["utm_campaign"]).first() if group["utm_campaign"] else None
-        spend = MarketingSpend.objects.filter(campaign=campaign, date__gte=start.date()).aggregate(value=Sum("amount"))["value"] if campaign else None
+        spend_end_date = (end - timedelta(microseconds=1)).date()
+        spend = MarketingSpend.objects.filter(campaign=campaign, date__gte=start.date(), date__lte=spend_end_date).aggregate(value=Sum("amount"))["value"] if campaign else None
         result.append({**group, "inquiries": inquiries, "visits": visits, "sales": sales, "spend": spend, "cost_per_inquiry": spend / inquiries if spend is not None and inquiries else None, "cost_per_visit": spend / visits if spend is not None and visits else None, "cost_per_sale": spend / sales if spend is not None and sales else None})
     return Response(result)
 
@@ -130,8 +163,8 @@ def bi_marketing(request):
 @api_view(["GET"])
 @permission_classes([IsMfaVerifiedAdmin, CanViewBI])
 def bi_sales(request):
-    start, _, _ = period_bounds(request)
-    qs = Sale.objects.filter(closed_at__gte=start, status="CLOSED")
+    start, end, _ = period_bounds(request)
+    qs = Sale.objects.filter(closed_at__gte=start, closed_at__lt=end, status="CLOSED")
     timeline = list(qs.annotate(date=TruncDate("closed_at")).values("date").annotate(sales=Count("id"), value=Sum("sale_price"), commissions=Sum("commission_amount")).order_by("date"))
     totals = qs.aggregate(sales=Count("id"), value=Sum("sale_price"), commissions=Sum("commission_amount"))
     durations = [(sale.closed_at - sale.lead.created_at).total_seconds() / 86400 for sale in qs.select_related("lead")]
@@ -143,6 +176,6 @@ def bi_sales(request):
 @api_view(["GET"])
 @permission_classes([IsMfaVerifiedAdmin, CanViewBI])
 def bi_decisions(request):
-    start, _, _ = period_bounds(request)
-    performance = list(Listing.all_objects.annotate(views=Count("analytics_events", filter=Q(analytics_events__event_name="listing_viewed", analytics_events__occurred_at__gte=start), distinct=True), inquiries_count=Count("inquiries", filter=Q(inquiries__created_at__gte=start), distinct=True)).values("id", "title", "views", "inquiries_count").order_by("-views")[:20])
-    return Response({"most_inquired": sorted(performance, key=lambda item: -item["inquiries_count"])[:10], "high_views_low_inquiries": [item for item in performance if item["views"] >= 5 and item["inquiries_count"] / item["views"] < .05], "pending_leads": Lead.objects.filter(status__in=["NEW", "CONTACTED"]).count(), "recent_unpublished": Listing.objects.filter(is_published=False, updated_at__gte=start).count()})
+    start, end, _ = period_bounds(request)
+    performance = list(Listing.all_objects.annotate(views=Count("analytics_events", filter=Q(analytics_events__event_name="listing_viewed", analytics_events__occurred_at__gte=start, analytics_events__occurred_at__lt=end), distinct=True), inquiries_count=Count("inquiries", filter=Q(inquiries__created_at__gte=start, inquiries__created_at__lt=end), distinct=True)).values("id", "title", "views", "inquiries_count").order_by("-views")[:20])
+    return Response({"most_inquired": sorted(performance, key=lambda item: -item["inquiries_count"])[:10], "high_views_low_inquiries": [item for item in performance if item["views"] >= 5 and item["inquiries_count"] / item["views"] < .05], "pending_leads": Lead.objects.filter(status__in=["NEW", "CONTACTED"]).count(), "recent_unpublished": Listing.objects.filter(is_published=False, updated_at__gte=start, updated_at__lt=end).count()})

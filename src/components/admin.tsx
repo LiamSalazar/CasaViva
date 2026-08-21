@@ -33,12 +33,12 @@ import type {
   Location,
   Property,
   PropertyType,
+  PropertyTypeOption,
 } from "@/types";
 import {
   developmentService,
   guideService,
   homeContentService,
-  locationService,
   propertyService,
   useCasaViva,
 } from "@/services";
@@ -50,7 +50,7 @@ import {
   StatusBadge,
   useToast,
 } from "@/components/ui";
-import { apiFetch, mapProperty } from "@/services/api";
+import { api, apiFetch, fetchAllPages, mapProperty } from "@/services/api";
 
 const adminNav = [
   ["Inicio", "/administracion", Home],
@@ -157,6 +157,7 @@ export function AdminLoginPage() {
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const { register, handleSubmit } = useForm<LoginData>({
     resolver: zodResolver(loginSchema),
+    defaultValues: { email: "", password: "" },
   });
   useEffect(() => {
     if (hydrated && adminAuthenticated) router.replace("/administracion");
@@ -194,7 +195,7 @@ export function AdminLoginPage() {
           <CasaVivaLogo />
           <h1>Administración</h1>
           <p className="muted">Gestiona propiedades, clientes, contenido y resultados.</p>
-          {stage === "credentials" ? <form onSubmit={handleSubmit(submit)}>
+          {stage === "credentials" ? <form key="credentials" onSubmit={handleSubmit(submit)}>
             <label className="field">
               <span>Correo</span>
               <input type="email" {...register("email")} />
@@ -207,7 +208,7 @@ export function AdminLoginPage() {
             <button className="button" type="submit">
               Entrar
             </button>
-          </form> : recoveryCodes.length ? <div className="recovery-codes"><h2>Códigos de recuperación</h2><p>Guárdalos ahora en un lugar seguro. No volverán a mostrarse.</p>{recoveryCodes.map((x) => <code key={x}>{x}</code>)}<button className="button" onClick={() => { login(); router.push("/administracion"); }}>Continuar</button></div> : <form onSubmit={verify}>{qr && <><p>Escanea este código con tu aplicación de autenticación.</p><Image src={qr} alt="Código de configuración MFA" width={220} height={220} unoptimized /></>}<label className="field"><span>Código de seguridad</span><input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} /></label>{invalid && <small>{invalid}</small>}<button className="button" type="submit">Verificar</button></form>}
+          </form> : recoveryCodes.length ? <div className="recovery-codes"><h2>Códigos de recuperación</h2><p>Guárdalos ahora en un lugar seguro. No volverán a mostrarse.</p>{recoveryCodes.map((x) => <code key={x}>{x}</code>)}<button className="button" onClick={() => { login(); router.push("/administracion"); }}>Continuar</button></div> : <form key="mfa" onSubmit={verify}>{qr && <><p>Escanea este código con tu aplicación de autenticación.</p><Image src={qr} alt="Código de configuración MFA" width={220} height={220} unoptimized /></>}<label className="field"><span>Código de seguridad</span><input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} /></label>{invalid && <small>{invalid}</small>}<button className="button" type="submit">Verificar</button></form>}
         </div>
       </div>
     </div>
@@ -289,13 +290,13 @@ export function AdminPropertiesPage() {
   const [hardDelete, setHardDelete] = useState<Property>();
   const [confirmation, setConfirmation] = useState("");
   const [hardDeleteReason, setHardDeleteReason] = useState("");
-  const [deletePreview, setDeletePreview] = useState<{ inquiries: number; analytics_events: number; sales: number; can_delete: boolean }>();
+  const [deletePreview, setDeletePreview] = useState<{ inquiries: number; visits: number; interests: number; analytics_events: number; sales: number; can_delete: boolean }>();
   const [actionError, setActionError] = useState("");
   const { toast } = useToast();
   useEffect(() => {
     if (!showArchived) return;
-    apiFetch<{ results: Array<Record<string, any>> }>("/api/v1/admin/listings/?page_size=100&archived=all")
-      .then((result) => setArchived(result.results.map(mapProperty).filter((item) => Boolean(item.archivedAt))))
+    fetchAllPages<Record<string, any>>("/api/v1/admin/properties/?page_size=100&archived=all")
+      .then((result) => setArchived(result.map(mapProperty).filter((item) => Boolean(item.archivedAt))))
       .catch((error) => setActionError(error instanceof Error ? error.message : "No fue posible cargar los registros archivados"));
   }, [showArchived]);
   const source = showArchived ? archived : properties;
@@ -384,8 +385,8 @@ export function AdminPropertiesPage() {
                     {!showArchived && <button title="Archivar" onClick={() => setRemove(p)}>
                       <Trash2 size={16} />
                     </button>}
-                    {showArchived && <button onClick={async () => { try { await apiFetch(`/api/v1/admin/listings/${p.id}/restore/`, { method: "POST", body: "{}" }); setArchived((items) => items.filter((item) => item.id !== p.id)); await refreshAdmin(); toast("Registro restaurado"); } catch (error) { setActionError(error instanceof Error ? error.message : "No fue posible restaurar"); } }}>Restaurar</button>}
-                    {showArchived && <button className="danger" onClick={() => { setHardDelete(p); setConfirmation(""); setHardDeleteReason(""); setDeletePreview(undefined); setActionError(""); void apiFetch<{ inquiries: number; analytics_events: number; sales: number; can_delete: boolean }>(`/api/v1/admin/listings/${p.id}/delete-preview/`).then(setDeletePreview).catch((error) => setActionError(error instanceof Error ? error.message : "No fue posible revisar las dependencias")); }}>Eliminar definitivamente</button>}
+                    {showArchived && <button onClick={async () => { try { await apiFetch(`/api/v1/admin/properties/${p.id}/restore/`, { method: "POST", body: "{}" }); setArchived((items) => items.filter((item) => item.id !== p.id)); await refreshAdmin(); toast("Registro restaurado"); } catch (error) { setActionError(error instanceof Error ? error.message : "No fue posible restaurar"); } }}>Restaurar</button>}
+                    {showArchived && <button className="danger" onClick={() => { setHardDelete(p); setConfirmation(""); setHardDeleteReason(""); setDeletePreview(undefined); setActionError(""); void apiFetch<{ inquiries: number; visits: number; interests: number; analytics_events: number; sales: number; can_delete: boolean }>(`/api/v1/admin/properties/${p.id}/delete-preview/`).then(setDeletePreview).catch((error) => setActionError(error instanceof Error ? error.message : "No fue posible revisar las dependencias")); }}>Eliminar definitivamente</button>}
                   </div>
                 </td>
               </tr>
@@ -408,12 +409,12 @@ export function AdminPropertiesPage() {
       />
       <Modal open={Boolean(hardDelete)} onClose={() => setHardDelete(undefined)} title="Eliminar definitivamente">
         <p className="muted">Esta acción no se puede deshacer. Si el registro forma parte de una venta, CasaViva impedirá eliminarlo.</p>
-        {deletePreview && <div className="inventory-line"><span>Consultas <strong>{deletePreview.inquiries}</strong></span><span>Eventos históricos <strong>{deletePreview.analytics_events}</strong></span><span>Ventas <strong>{deletePreview.sales}</strong></span></div>}
+        {deletePreview && <div className="inventory-line"><span>Consultas <strong>{deletePreview.inquiries}</strong></span><span>Visitas <strong>{deletePreview.visits}</strong></span><span>Intereses <strong>{deletePreview.interests}</strong></span><span>Eventos históricos <strong>{deletePreview.analytics_events}</strong></span><span>Ventas <strong>{deletePreview.sales}</strong></span></div>}
         <label className="field"><span>Para confirmar, escribe “{hardDelete?.title}”</span><input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label>
         <label className="field"><span>Motivo</span><textarea value={hardDeleteReason} onChange={(event) => setHardDeleteReason(event.target.value)} /></label>
         {actionError && <p className="form-error">{actionError}</p>}
         {deletePreview?.sales ? <p className="form-error">Este registro forma parte del historial de una venta y no puede eliminarse definitivamente. Puedes conservarlo archivado.</p> : null}
-        <div className="modal-actions"><button className="button secondary" onClick={() => setHardDelete(undefined)}>Cancelar</button><button className="button danger" disabled={!hardDelete || confirmation !== hardDelete.title || !hardDeleteReason.trim() || !deletePreview?.can_delete} onClick={async () => { if (!hardDelete) return; try { await apiFetch(`/api/v1/admin/listings/${hardDelete.id}/hard-delete/`, { method: "POST", body: JSON.stringify({ confirmation, reason: hardDeleteReason.trim() }) }); setArchived((items) => items.filter((item) => item.id !== hardDelete.id)); setHardDelete(undefined); toast("Registro eliminado definitivamente"); } catch (error) { setActionError(error instanceof Error ? error.message : "No fue posible eliminar"); } }}>Eliminar definitivamente</button></div>
+        <div className="modal-actions"><button className="button secondary" onClick={() => setHardDelete(undefined)}>Cancelar</button><button className="button danger" disabled={!hardDelete || confirmation !== hardDelete.title || !hardDeleteReason.trim() || !deletePreview?.can_delete} onClick={async () => { if (!hardDelete) return; try { await apiFetch(`/api/v1/admin/properties/${hardDelete.id}/hard-delete/`, { method: "POST", body: JSON.stringify({ confirmation, reason: hardDeleteReason.trim() }) }); setArchived((items) => items.filter((item) => item.id !== hardDelete.id)); setHardDelete(undefined); toast("Registro eliminado definitivamente"); } catch (error) { setActionError(error instanceof Error ? error.message : "No fue posible eliminar"); } }}>Eliminar definitivamente</button></div>
       </Modal>
     </AdminLayout>
   );
@@ -452,8 +453,8 @@ const blankProperty = (): Property => ({
   slug: "",
   title: "",
   operation: "sale",
-  propertyType: "house",
-  condition: "new",
+  propertyType: "",
+  condition: undefined,
   status: "available",
   sourceType: "PRIVATE",
   published: false,
@@ -483,10 +484,27 @@ export function PropertyFormPage({ id }: { id?: string }) {
   const [uploading, setUploading] = useState(false);
   const [modelLinks, setModelLinks] = useState<Array<{ id: string; development: string; development_name: string; housing_model: string; model_name: string; developer_id: string; developer_name: string }>>([]);
   const [amenityOptions, setAmenityOptions] = useState<Array<{ id: string; name: string; category: string }>>([]);
+  const [propertyTypeOptions, setPropertyTypeOptions] = useState<PropertyTypeOption[]>([]);
   const [featureOptions, setFeatureOptions] = useState<Array<{ id: string; label: string; data_type: string; unit?: string; choices?: Array<{ id: string; label: string }> }>>([]);
-  useEffect(() => { if (existing || item.sourceType === "DEVELOPER") apiFetch<{ results: typeof modelLinks }>("/api/v1/admin/development-models/?page_size=100").then((x) => setModelLinks(x.results)).catch(() => setModelLinks([])); }, [existing, item.sourceType]);
-  useEffect(() => { apiFetch<{ results: Array<{ id: string; name: string; category: string }> }>("/api/v1/admin/amenities/?page_size=100&is_active=true").then((x) => setAmenityOptions(x.results)).catch(() => setAmenityOptions([])); }, []);
-  useEffect(() => { apiFetch<{ results: Array<{ id: string; label: string; data_type: string; unit?: string; choices?: Array<{ id: string; label: string }> }> }>("/api/v1/admin/features/?page_size=100&is_active=true").then((x) => setFeatureOptions(x.results)).catch(() => setFeatureOptions([])); }, []);
+  const [localityOptions, setLocalityOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [neighborhoodOptions, setNeighborhoodOptions] = useState<Array<{ id: string; name: string; postal_code?: string }>>([]);
+  useEffect(() => { if (existing || item.sourceType === "DEVELOPER") fetchAllPages<(typeof modelLinks)[number]>("/api/v1/admin/development-models/?page_size=100").then(setModelLinks).catch(() => setModelLinks([])); }, [existing, item.sourceType]);
+  useEffect(() => { fetchAllPages<{ id: string; name: string; category: string }>("/api/v1/admin/amenities/?page_size=100&is_active=true").then(setAmenityOptions).catch(() => setAmenityOptions([])); }, []);
+  useEffect(() => { api.propertyTypes().then(setPropertyTypeOptions).catch(() => setPropertyTypeOptions([])); }, []);
+  const effectiveMunicipalityId = item.municipalityId || developments.find((development) => development.id === item.developmentId)?.municipalityId;
+  useEffect(() => {
+    let cancelled = false;
+    if (!effectiveMunicipalityId) {
+      queueMicrotask(() => { if (!cancelled) { setLocalityOptions([]); setNeighborhoodOptions([]); } });
+      return () => { cancelled = true; };
+    }
+    Promise.all([
+      fetchAllPages<{ id: string; name: string }>(`/api/v1/admin/localities/?municipality=${effectiveMunicipalityId}&is_active=true&page_size=100`),
+      fetchAllPages<{ id: string; name: string; postal_code?: string }>(`/api/v1/admin/neighborhoods/?municipality=${effectiveMunicipalityId}&is_active=true&page_size=100`),
+    ]).then(([localities, neighborhoods]) => { if (!cancelled) { setLocalityOptions(localities); setNeighborhoodOptions(neighborhoods); } }).catch(() => { if (!cancelled) { setLocalityOptions([]); setNeighborhoodOptions([]); } });
+    return () => { cancelled = true; };
+  }, [effectiveMunicipalityId]);
+  useEffect(() => { fetchAllPages<{ id: string; label: string; data_type: string; unit?: string; choices?: Array<{ id: string; label: string }> }>("/api/v1/admin/features/?page_size=100&is_active=true").then(setFeatureOptions).catch(() => setFeatureOptions([])); }, []);
   const { toast } = useToast();
   const update = <K extends keyof Property>(key: K, value: Property[K]) =>
     setItem((p) => ({ ...p, [key]: value }));
@@ -545,18 +563,14 @@ export function PropertyFormPage({ id }: { id?: string }) {
             label="Tipo"
             value={item.propertyType}
             onChange={(v) => update("propertyType", v as PropertyType)}
-            options={[
-              ["Casa", "house"],
-              ["Departamento", "apartment"],
-              ["Terreno", "land"],
-              ["Townhouse", "townhouse"],
-            ]}
+            options={[["Selecciona", ""], ...propertyTypeOptions.map((option) => [option.name, option.code])]}
           />
           <Select
             label="Condición"
-            value={item.condition}
-            onChange={(v) => update("condition", v as Property["condition"])}
+            value={item.condition || ""}
+            onChange={(v) => update("condition", (v || undefined) as Property["condition"])}
             options={[
+              ["Sin especificar", ""],
               ["Nueva", "new"],
               ["Usada", "used"],
             ]}
@@ -586,30 +600,44 @@ export function PropertyFormPage({ id }: { id?: string }) {
       </FormSection>
       <FormSection title="Precio">
         <div className="admin-form-grid">
-          <NumberField
-            label="Precio MXN"
+          <Select
+            label="Tipo de precio"
+            value={item.priceLabel || "fixed"}
+            onChange={(value) => setItem((current) => ({
+              ...current,
+              priceLabel: value as Property["priceLabel"],
+              price: value === "on-request" ? undefined : current.price,
+              priceMax: value === "range" ? current.priceMax : undefined,
+            }))}
+            options={[
+              ["Precio fijo", "fixed"],
+              ["Desde", "from"],
+              ["Rango", "range"],
+              ["A consultar", "on-request"],
+            ]}
+          />
+          {item.priceLabel !== "on-request" && <NumberField
+            label={item.priceLabel === "range" ? "Precio mínimo MXN" : "Precio MXN"}
             value={item.price}
             onChange={(v) => update("price", v)}
-          />
-          <Toggle
-            label={'Mostrar "Desde"'}
-            checked={item.priceLabel === "from"}
-            onChange={(v) => update("priceLabel", v ? "from" : "fixed")}
-          />
+          />}
+          {item.priceLabel === "range" && <NumberField
+            label="Precio máximo MXN"
+            value={item.priceMax}
+            onChange={(v) => update("priceMax", v)}
+          />}
         </div>
       </FormSection>
       <FormSection title="Ubicación">
         <div className="admin-form-grid">
-          <Text
-            label="Colonia"
-            value={item.neighborhood || ""}
-            onChange={(v) => update("neighborhood", v)}
-          />
+          <Select label="Localidad" value={item.localityId || ""} onChange={(value) => update("localityId", value || undefined)} options={[["Sin especificar", ""], ...localityOptions.map((option) => [option.name, option.id])]} />
+          <Select label="Colonia" value={item.neighborhoodId || ""} onChange={(value) => { const option = neighborhoodOptions.find((candidate) => candidate.id === value); setItem((current) => ({ ...current, neighborhoodId: value || undefined, neighborhood: option?.name, postalCode: current.postalCode || option?.postal_code || undefined })); }} options={[["Sin especificar", ""], ...neighborhoodOptions.map((option) => [option.name, option.id])]} />
           <Text
             label="Dirección"
             value={item.address || ""}
             onChange={(v) => update("address", v)}
           />
+          <Text label="Código postal" value={item.postalCode || ""} onChange={(value) => update("postalCode", value)} />
           <NumberField
             label="Latitud"
             value={item.latitude}
@@ -627,13 +655,21 @@ export function PropertyFormPage({ id }: { id?: string }) {
       <FormSection title="Dimensiones">
         <div className="admin-form-grid">
           {[
-            ["Recámaras", "bedrooms"],
+            ["Recámaras mínimas", "bedrooms"],
+            ["Recámaras máximas", "bedroomsMax"],
             ["Baños", "bathrooms"],
+            ["Baños completos", "fullBathrooms"],
             ["Medios baños", "halfBathrooms"],
-            ["Estacionamientos", "parkingSpaces"],
-            ["Construcción m²", "constructionM2"],
-            ["Terreno m²", "landM2"],
-            ["Niveles", "levels"],
+            ["Estacionamientos mínimos", "parkingSpaces"],
+            ["Estacionamientos máximos", "parkingMax"],
+            ["Construcción mínima m²", "constructionM2"],
+            ["Construcción máxima m²", "constructionM2Max"],
+            ["Terreno mínimo m²", "landM2"],
+            ["Terreno máximo m²", "landM2Max"],
+            ["Jardín mínimo m²", "gardenM2"],
+            ["Jardín máximo m²", "gardenM2Max"],
+            ["Niveles mínimos", "levels"],
+            ["Niveles máximos", "levelsMax"],
           ].map(([l, k]) => (
             <NumberField
               key={k}
@@ -660,7 +696,7 @@ export function PropertyFormPage({ id }: { id?: string }) {
           {item.sourceType !== "DEVELOPER" && <Select
             label="Ubicación"
             value={locations.find((x) => x.name === item.municipality && x.state === item.state)?.id || ""}
-            onChange={(v) => { const location = locations.find((x) => x.id === v); setItem((p) => ({ ...p, municipality: location?.name, state: location?.state })); }}
+            onChange={(v) => { const location = locations.find((x) => x.id === v); setItem((p) => ({ ...p, municipality: location?.name, state: location?.state, municipalityId: location?.id, stateId: location?.stateId, localityId: undefined, neighborhoodId: undefined })); }}
             options={[["Selecciona estado y municipio", ""], ...locations.map((x) => [`${x.name}, ${x.state}`, x.id])]}
           />
           }
@@ -807,11 +843,16 @@ export function DevelopmentFormPage({ id }: { id?: string }) {
   const { toast } = useToast();
   const [developers, setDevelopers] = useState<Array<{ id: string; name: string }>>([]);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [amenityOptions, setAmenityOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [localityOptions, setLocalityOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [neighborhoodOptions, setNeighborhoodOptions] = useState<Array<{ id: string; name: string; postal_code?: string }>>([]);
   useEffect(() => {
-    apiFetch<{ results: Array<{ id: string; name: string }> }>("/api/v1/admin/developers/?page_size=100")
-      .then((result) => setDevelopers(result.results))
+    fetchAllPages<{ id: string; name: string }>("/api/v1/admin/developers/?page_size=100")
+      .then(setDevelopers)
       .catch(() => setDevelopers([]));
   }, []);
+  useEffect(() => { fetchAllPages<{ id: string; name: string }>("/api/v1/admin/amenities/?is_active=true&page_size=100").then(setAmenityOptions).catch(() => setAmenityOptions([])); }, []);
   const [item, setItem] = useState<Development>(() =>
     existing
       ? structuredClone(existing)
@@ -836,6 +877,18 @@ export function DevelopmentFormPage({ id }: { id?: string }) {
   );
   const u = <K extends keyof Development>(k: K, v: Development[K]) =>
     setItem((x) => ({ ...x, [k]: v }));
+  useEffect(() => {
+    let cancelled = false;
+    if (!item.municipalityId) {
+      queueMicrotask(() => { if (!cancelled) { setLocalityOptions([]); setNeighborhoodOptions([]); } });
+      return () => { cancelled = true; };
+    }
+    Promise.all([
+      fetchAllPages<{ id: string; name: string }>(`/api/v1/admin/localities/?municipality=${item.municipalityId}&is_active=true&page_size=100`),
+      fetchAllPages<{ id: string; name: string; postal_code?: string }>(`/api/v1/admin/neighborhoods/?municipality=${item.municipalityId}&is_active=true&page_size=100`),
+    ]).then(([localities, neighborhoods]) => { if (!cancelled) { setLocalityOptions(localities); setNeighborhoodOptions(neighborhoods); } }).catch(() => { if (!cancelled) { setLocalityOptions([]); setNeighborhoodOptions([]); } });
+    return () => { cancelled = true; };
+  }, [item.municipalityId]);
   const save = async () => {
     if (
       !item.name ||
@@ -886,14 +939,13 @@ export function DevelopmentFormPage({ id }: { id?: string }) {
           <Select
             label="Estado y municipio"
             value={item.municipalityId || ""}
-            onChange={(v) => { const location = locations.find((x) => x.id === v); setItem((current) => ({ ...current, municipalityId: location?.id, stateId: location?.stateId, municipality: location?.name || "", state: location?.state || "" })); }}
+            onChange={(v) => { const location = locations.find((x) => x.id === v); setItem((current) => ({ ...current, municipalityId: location?.id, stateId: location?.stateId, municipality: location?.name || "", state: location?.state || "", localityId: undefined, neighborhoodId: undefined })); }}
             options={[["Selecciona", ""], ...locations.map((location) => [`${location.name}, ${location.state}`, location.id])]}
           />
-          <Text
-            label="Colonia"
-            value={item.neighborhood || ""}
-            onChange={(v) => u("neighborhood", v)}
-          />
+          <Select label="Localidad" value={item.localityId || ""} onChange={(value) => u("localityId", value || undefined)} options={[["Sin especificar", ""], ...localityOptions.map((option) => [option.name, option.id])]} />
+          <Select label="Colonia" value={item.neighborhoodId || ""} onChange={(value) => { const option = neighborhoodOptions.find((candidate) => candidate.id === value); setItem((current) => ({ ...current, neighborhoodId: value || undefined, neighborhood: option?.name, postalCode: current.postalCode || option?.postal_code || undefined })); }} options={[["Sin especificar", ""], ...neighborhoodOptions.map((option) => [option.name, option.id])]} />
+          <Text label="Dirección" value={item.address || ""} onChange={(value) => u("address", value)} />
+          <Text label="Código postal" value={item.postalCode || ""} onChange={(value) => u("postalCode", value)} />
           <NumberField
             label="Latitud"
             value={item.latitude}
@@ -927,6 +979,11 @@ export function DevelopmentFormPage({ id }: { id?: string }) {
             onChange={(v) => u("featured", v)}
           />
         </div>
+      </FormSection>
+      <FormSection title="Amenidades y multimedia">
+        <div className="filter-checks">{amenityOptions.map((amenity) => <label className="check-chip" key={amenity.id}><input type="checkbox" checked={(item.amenityIds || []).includes(amenity.id)} onChange={(event) => setItem((current) => ({ ...current, amenityIds: event.target.checked ? [...(current.amenityIds || []), amenity.id] : (current.amenityIds || []).filter((id) => id !== amenity.id), amenities: event.target.checked ? [...current.amenities.filter((name) => name !== amenity.name), amenity.name] : current.amenities.filter((name) => name !== amenity.name) }))} /><span>{amenity.name}</span></label>)}</div>
+        <label className="field"><span>Imagen principal</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploading} onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setUploading(true); try { const form = new FormData(); form.append("file", file); form.append("media_type", "IMAGE"); form.append("alt_text", item.name); const asset = await apiFetch<{ id: string; url: string }>("/api/v1/admin/media/", { method: "POST", body: form }); setItem((current) => ({ ...current, heroImage: asset.url, heroMediaId: asset.id, mediaAssets: [...(current.mediaAssets || []).filter((media) => media.role !== "HERO"), { mediaId: asset.id, role: "HERO", sortOrder: 0, url: asset.url }] })); toast("Imagen cargada"); } catch (error) { toast(error instanceof Error ? error.message : "No fue posible cargar la imagen"); } finally { setUploading(false); } }} /><small>{uploading ? "Cargando imagen…" : "JPG, PNG o WebP"}</small></label>
+        {item.heroImage && <div className="image-preview"><Image src={item.heroImage} alt="Vista previa" width={1000} height={400} /></div>}
       </FormSection>
       <FormSection title="Modelos asociados">
         <p className="muted">Las relaciones con modelos se administran desde la sección Modelos para conservar sus ofertas y precios independientes.</p>
@@ -963,7 +1020,7 @@ export function AdminLocationsPage() {
       <EntityTable
         heads={["Imagen", "Ubicación", "Estado", "Destacada", "Acciones"]}
       >
-        {locations.map((l) => (
+        {locations.filter((location) => location.contentId).map((l) => (
           <tr key={l.id}>
             <td>
               <Image src={l.heroImage} alt="" width={70} height={50} />
@@ -972,15 +1029,15 @@ export function AdminLocationsPage() {
               <strong>{l.name}</strong>
             </td>
             <td>{l.state}</td>
-            <td>{l.featured ? "Sí" : "No"}</td>
+            <td>{l.archivedAt ? "Archivada" : l.featured ? "Sí" : "No"}</td>
             <td>
               <div className="table-actions">
-                <button onClick={() => setEdit(l)}>
+                <button title={l.archivedAt ? "Restaurar y editar" : "Editar"} onClick={() => setEdit(l)}>
                   <Pencil size={16} />
                 </button>
-                <button onClick={() => setRemove(l)}>
+                {!l.archivedAt && <button onClick={() => setRemove(l)}>
                   <Trash2 size={16} />
-                </button>
+                </button>}
               </div>
             </td>
           </tr>
@@ -1000,10 +1057,10 @@ export function AdminLocationsPage() {
         onClose={() => setRemove(undefined)}
         title="¿Eliminar esta ubicación?"
         description="La página editorial de esta ubicación dejará de estar disponible."
-        onConfirm={() => {
+        onConfirm={async () => {
           if (remove) {
-            deleteLocation(remove.id);
-            toast("Ubicación eliminada");
+            try { await deleteLocation(remove.id); toast("Contenido de ubicación archivado"); }
+            catch (error) { toast(error instanceof Error ? error.message : "No fue posible archivar la ubicación"); }
           }
         }}
       />
@@ -1021,44 +1078,33 @@ function LocationInline({
     item
       ? structuredClone(item)
       : {
-          id: uid("loc"),
+          id: "",
           slug: "",
           name: "",
-          state: "Estado de México",
+          state: "",
           description: "",
-          heroImage:
-            "https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1800&q=86",
+          heroImage: "/casaviva-placeholder.svg",
           featured: false,
-          latitude: 19.7,
-          longitude: -99,
         },
   );
+  const { locations, saveLocation } = useCasaViva();
   const { toast } = useToast();
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
   const u = <K extends keyof Location>(k: K, v: Location[K]) =>
     setX((a) => ({ ...a, [k]: v }));
   return (
     <div className="form-section" style={{ marginTop: 18 }}>
       <h3>{item ? "Editar ubicación" : "Nueva ubicación"}</h3>
       <div className="admin-form-grid">
-        <Text
-          label="Nombre"
-          value={x.name}
-          onChange={(v) => {
-            u("name", v);
-            if (!item) u("slug", slugify(v));
-          }}
-        />
+        {item ? <label className="field"><span>Municipio</span><input value={`${x.name}, ${x.state}`} readOnly /></label> : <Select label="Municipio" value={x.id} onChange={(value) => { const location = locations.find((candidate) => candidate.id === value); setX((current) => ({ ...current, id: value, name: location?.name || "", state: location?.state || "", stateId: location?.stateId, slug: location ? slugify(location.name) : "" })); }} options={[["Selecciona", ""], ...locations.filter((location) => !location.contentId).map((location) => [`${location.name}, ${location.state}`, location.id])]} />}
         <Text
           label="Slug"
           value={x.slug}
           onChange={(v) => u("slug", slugify(v))}
         />
-        <Text label="Estado" value={x.state} onChange={(v) => u("state", v)} />
-        <Text
-          label="Imagen"
-          value={x.heroImage}
-          onChange={(v) => u("heroImage", v)}
-        />
+        <label className="field"><span>Imagen editorial</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploading} onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setUploading(true); setError(""); try { const form = new FormData(); form.append("file", file); form.append("media_type", "IMAGE"); form.append("alt_text", x.name); const asset = await apiFetch<{ id: string; url: string }>("/api/v1/admin/media/", { method: "POST", body: form }); setX((current) => ({ ...current, heroImage: asset.url, heroMediaId: asset.id })); } catch (uploadError) { setError(uploadError instanceof Error ? uploadError.message : "No fue posible cargar la imagen"); } finally { setUploading(false); } }} /><small>{uploading ? "Cargando imagen…" : "JPG, PNG o WebP"}</small></label>
         <NumberField
           label="Latitud"
           value={x.latitude}
@@ -1082,19 +1128,22 @@ function LocationInline({
           onChange={(v) => u("featured", v)}
         />
       </div>
+      {error && <p className="form-error">{error}</p>}
       <div className="form-actions">
         <button className="button secondary" onClick={onClose}>
           Cancelar
         </button>
         <button
           className="button"
-          onClick={() => {
-            locationService.save(x);
-            toast(item ? "Cambios guardados" : "Ubicación creada");
-            onClose();
+          disabled={saving || !x.id || !x.slug}
+          onClick={async () => {
+            setSaving(true); setError("");
+            try { await saveLocation(x); toast(item ? "Cambios guardados" : "Ubicación creada"); onClose(); }
+            catch (saveError) { setError(saveError instanceof Error ? saveError.message : "No fue posible guardar la ubicación"); }
+            finally { setSaving(false); }
           }}
         >
-          Guardar
+          {saving ? "Guardando…" : "Guardar"}
         </button>
       </div>
     </div>

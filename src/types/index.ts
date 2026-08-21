@@ -1,4 +1,5 @@
-export type PropertyType = "house" | "apartment" | "land" | "townhouse";
+export type PropertyTypeCode = string;
+export type PropertyType = PropertyTypeCode;
 export type PropertyStatus = "available" | "temporarily_unavailable" | "reserved" | "sold";
 
 export interface Property {
@@ -9,7 +10,8 @@ export interface Property {
   subtitle?: string;
   operation: "sale";
   propertyType: PropertyType;
-  condition: "new" | "used";
+  propertyTypeName?: string;
+  condition?: "new" | "used";
   status: PropertyStatus;
   published: boolean;
   featured: boolean;
@@ -24,12 +26,20 @@ export interface Property {
   latitude?: number;
   longitude?: number;
   bedrooms?: number;
+  bedroomsMax?: number;
   bathrooms?: number;
+  fullBathrooms?: number;
   halfBathrooms?: number;
   parkingSpaces?: number;
+  parkingMax?: number;
   constructionM2?: number;
   landM2?: number;
   levels?: number;
+  levelsMax?: number;
+  constructionM2Max?: number;
+  landM2Max?: number;
+  gardenM2?: number;
+  gardenM2Max?: number;
   description: string;
   shortDescription: string;
   amenities: string[];
@@ -53,6 +63,9 @@ export interface Property {
   propertyTypeId?: string;
   stateId?: string;
   municipalityId?: string;
+  localityId?: string;
+  neighborhoodId?: string;
+  postalCode?: string;
   sourceType?: "DEVELOPER" | "PRIVATE";
   developerName?: string;
   developmentName?: string;
@@ -60,9 +73,20 @@ export interface Property {
   modelName?: string;
   constructionAreaBasis?: "EXACT" | "UP_TO" | "FROM" | "RANGE" | "UNKNOWN";
   landAreaBasis?: "EXACT" | "UP_TO" | "FROM" | "RANGE" | "UNKNOWN";
+  gardenAreaBasis?: "EXACT" | "UP_TO" | "FROM" | "RANGE" | "UNKNOWN";
   heroMediaId?: string;
+  mediaAssets?: Array<{ mediaId: string; role: "HERO" | "GALLERY" | "FLOORPLAN" | "DOCUMENT"; sortOrder: number; url?: string }>;
   archivedAt?: string;
 }
+
+export interface PropertyTypeOption { id: string; code: string; name: string }
+export interface SearchOptions {
+  property_types: PropertyTypeOption[];
+  amenities: Array<{ id: string; slug: string; name: string; category: string }>;
+  locations: Array<{ id: string; name: string; state_id: string; state: string }>;
+}
+
+export interface ApiPage<T> { count: number; next: string | null; previous: string | null; results: T[] }
 
 export interface Development {
   id: string;
@@ -87,6 +111,13 @@ export interface Development {
   developerId?: string;
   stateId?: string;
   municipalityId?: string;
+  localityId?: string;
+  neighborhoodId?: string;
+  address?: string;
+  postalCode?: string;
+  amenityIds?: string[];
+  mediaAssets?: Array<{ mediaId: string; role: "HERO" | "GALLERY" | "FLOORPLAN" | "DOCUMENT"; sortOrder: number; url?: string }>;
+  heroMediaId?: string;
   version?: number;
 }
 
@@ -101,6 +132,11 @@ export interface Location {
   latitude?: number;
   longitude?: number;
   stateId?: string;
+  contentId?: string;
+  contentVersion?: number;
+  heroMediaId?: string;
+  hasContent?: boolean;
+  archivedAt?: string;
 }
 
 export interface Guide {

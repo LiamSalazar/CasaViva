@@ -2,8 +2,11 @@ from pathlib import Path
 import os
 from urllib.parse import urlparse, unquote
 from django.utils.csp import CSP
+from config.env import load_project_environment
 
 BASE_DIR = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = BASE_DIR.parent
+load_project_environment()
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "unsafe-development-only")
 DEBUG = False
@@ -40,6 +43,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "apps.common.middleware.RequestIdMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "apps.common.middleware.ApiTrailingSlashMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",

@@ -1,4 +1,5 @@
 from django.db import models
+from django.core.exceptions import ValidationError
 from apps.common.models import UUIDTimeStampedModel
 
 
@@ -52,3 +53,11 @@ class Neighborhood(UUIDTimeStampedModel):
 
     def __str__(self):
         return self.name
+
+    def clean(self):
+        if self.locality_id and self.locality.municipality_id != self.municipality_id:
+            raise ValidationError({"locality": "La localidad no pertenece al municipio seleccionado."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)

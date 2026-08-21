@@ -4,6 +4,8 @@ from django.utils import timezone
 from apps.accounts.services import seed_groups
 from apps.catalog.models import Amenity, FeatureDefinition, PropertyType
 from apps.crm.models import PrivacyNoticeVersion
+import hashlib
+from datetime import datetime
 
 
 class Command(BaseCommand):
@@ -23,4 +25,13 @@ class Command(BaseCommand):
             slug = name.lower().replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u").replace(" ", "-")
             Amenity.objects.get_or_create(slug=slug, defaults={"name": name, "category": category, "sort_order": order})
         FeatureDefinition.objects.get_or_create(code="area-tv-home-office", defaults={"label": "Área de TV / Home Office", "category": "Interior", "data_type": "BOOLEAN", "is_public": True})
+        if not PrivacyNoticeVersion.objects.filter(is_active=True).exists():
+            current_notice = (
+                "CasaViva trata la información proporcionada para atender consultas, coordinar visitas y dar seguimiento a solicitudes inmobiliarias.\n"
+                "Los formularios solicitan únicamente los datos necesarios para responder. El consentimiento y la versión del aviso aplicable se conservan como parte del historial de atención."
+            )
+            PrivacyNoticeVersion.objects.get_or_create(
+                version="web-2026-08-01",
+                defaults={"published_at": timezone.make_aware(datetime(2026, 8, 1, 0, 0)), "content_hash": hashlib.sha256(current_notice.encode()).hexdigest(), "is_active": True},
+            )
         self.stdout.write(self.style.SUCCESS("Catálogos y roles iniciales listos."))

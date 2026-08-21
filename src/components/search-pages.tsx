@@ -19,11 +19,11 @@ import type {
   PropertySort,
   PropertyType,
   Property,
+  SearchOptions,
 } from "@/types";
 import { api, apiFetch, mapProperty } from "@/services/api";
 import { trackEvent } from "@/components/analytics-provider";
 import {
-  getSimilarProperties,
   matchProperties,
   savedSearchService,
   useCasaViva,
@@ -59,23 +59,6 @@ import {
   DevelopmentCard,
 } from "@/components/property";
 
-const typeOptions: [string, PropertyType][] = [
-  ["Casa", "house"],
-  ["Departamento", "apartment"],
-  ["Townhouse", "townhouse"],
-  ["Terreno", "land"],
-];
-const amenities = [
-  "Patio",
-  "Jardín",
-  "Área de juegos",
-  "Áreas verdes",
-  "Seguridad",
-  "Terraza",
-  "Roof garden",
-  "Bodega",
-  "Acceso controlado",
-];
 const deslug = (value: string, options: string[]) =>
   options.find((x) => slugify(x) === value) || value;
 
@@ -90,6 +73,8 @@ export function PropertiesPage() {
   const [remote, setRemote] = useState<Property[]>([]);
   const [remoteCount, setRemoteCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [searchOptions, setSearchOptions] = useState<SearchOptions>({ property_types: [], amenities: [], locations: [] });
+  useEffect(() => { api.searchOptions().then(setSearchOptions).catch(() => setSearchOptions({ property_types: [], amenities: [], locations: [] })); }, []);
   const municipalities = useMemo(() => locations.map((l) => l.name), [locations]);
   const filters: PropertyFilters = {
     query: search.get("query") || undefined,
@@ -115,10 +100,10 @@ export function PropertiesPage() {
     let cancelled = false;
     const source = new URLSearchParams(queryString);
     const params = new URLSearchParams();
-    const mappings: Record<string, string> = { query: "query", state: "state", municipality: "municipality", propertyType: "property_type", minPrice: "price_min", maxPrice: "price_max", minBedrooms: "bedrooms_min", minBathrooms: "bathrooms_min", minConstructionM2: "construction_area", minLandM2: "land_area", developmentId: "development", amenities: "amenities", page: "page" };
+    const mappings: Record<string, string> = { query: "query", state: "state", municipality: "municipality", propertyType: "property_type", condition: "condition", minPrice: "price_min", maxPrice: "price_max", minBedrooms: "bedrooms_min", minBathrooms: "bathrooms_min", minParking: "parking_min", minConstructionM2: "construction_area", minLandM2: "land_area", developmentId: "development", amenities: "amenities", page: "page" };
     Object.entries(mappings).forEach(([from, to]) => {
       const value = source.get(from);
-      if (value) params.set(to, from === "municipality" ? deslug(value, municipalities) : value);
+      if (value) params.set(to, from === "municipality" ? deslug(value, municipalities) : from === "condition" ? value.toUpperCase() : value);
     });
     params.set("ordering", ({ recent: "newest", "price-asc": "price_asc", "price-desc": "price_desc", "area-desc": "area_desc" } as const)[sort]);
     queueMicrotask(() => { if (!cancelled) setLoading(true); });
@@ -132,12 +117,8 @@ export function PropertiesPage() {
     else q.delete(key);
     router.push(`/propiedades?${q.toString()}`);
   };
-  const counts = {
-    house: results.filter((p) => p.propertyType === "house").length,
-    apartment: results.filter((p) => p.propertyType === "apartment").length,
-    new: results.filter((p) => p.condition === "new").length,
-    used: results.filter((p) => p.condition === "used").length,
-  };
+  const typeCounts = Object.fromEntries(searchOptions.property_types.map((type) => [type.code, results.filter((property) => property.propertyType === type.code).length]));
+  const counts = { new: results.filter((p) => p.condition === "new").length, used: results.filter((p) => p.condition === "used").length };
   return (
     <>
       <SearchHeader />
@@ -202,18 +183,7 @@ export function PropertiesPage() {
               : " para descubrir"}
           </h1>
           <div className="category-counts">
-            <button
-              className="text-link"
-              onClick={() => setParam("propertyType", "house")}
-            >
-              Casas {counts.house}
-            </button>
-            <button
-              className="text-link"
-              onClick={() => setParam("propertyType", "apartment")}
-            >
-              Departamentos {counts.apartment}
-            </button>
+            {searchOptions.property_types.map((type) => <button key={type.id} className="text-link" onClick={() => setParam("propertyType", type.code)}>{type.name} {typeCounts[type.code] || 0}</button>)}
             <button
               className="text-link"
               onClick={() => setParam("condition", "new")}
@@ -309,6 +279,8 @@ export function PropertiesPage() {
         sort={sort}
         locations={locations.map((l) => ({ name: l.name, state: l.state }))}
         developments={developments.map((d) => ({ id: d.id, name: d.name }))}
+        typeOptions={searchOptions.property_types.map((type) => [type.name, type.code])}
+        amenities={searchOptions.amenities.map((amenity) => amenity.name)}
       />
       <Footer />
     </>
@@ -322,6 +294,8 @@ function SearchFilters({
   sort,
   locations,
   developments,
+  typeOptions,
+  amenities,
 }: {
   open: boolean;
   onClose: () => void;
@@ -329,6 +303,8 @@ function SearchFilters({
   sort: PropertySort;
   locations: { name: string; state: string }[];
   developments: { id: string; name: string }[];
+  typeOptions: [string, PropertyType][];
+  amenities: string[];
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<PropertyFilters>(initial);
@@ -539,6 +515,11 @@ export function PropertyDetailPage({
     else if (slug) apiFetch<Record<string, any>>(`/api/v1/public/listings/${slug}/`).then((x) => { const mapped = mapProperty(x); setDetail(mapped); void trackEvent("listing_viewed", {}, { listing: mapped.id, offering: mapped.offeringId }); }).catch(() => setDetail(undefined));
   }, [slug, previewId, adminAuthenticated]);
   const property = previewId && !adminAuthenticated ? undefined : detail || (previewId ? properties.find((p) => p.id === previewId) : properties.find((p) => p.slug === slug && p.published));
+  const [similar, setSimilar] = useState<Property[]>([]);
+  useEffect(() => {
+    if (!property?.slug || previewId) return;
+    api.similarListings(property.slug).then(setSimilar).catch(() => setSimilar([]));
+  }, [property?.slug, previewId]);
   const [expanded, setExpanded] = useState(false);
   const anchor = useRef<HTMLDivElement>(null);
   if (!property)
@@ -555,7 +536,6 @@ export function PropertyDetailPage({
       </>
     );
   const development = developments.find((d) => d.id === property.developmentId);
-  const similar = getSimilarProperties(property, properties);
   return (
     <>
       <PublicHeader />
@@ -588,7 +568,7 @@ export function PropertyDetailPage({
           <div className="detail-title-wrap" ref={anchor}>
             <div>
               <span className="eyebrow">
-                {propertyTypeLabel[property.propertyType]} en venta
+                {property.propertyTypeName || propertyTypeLabel[property.propertyType] || property.propertyType} en venta
               </span>
               <h1>
                 {property.title} en {property.municipality}, {property.state}
@@ -729,8 +709,9 @@ function MaxIcon() {
 }
 
 export function FavoritesPage() {
-  const { properties, favorites, clearFavorites } = useCasaViva();
-  const list = properties.filter((p) => favorites.includes(p.id));
+  const { favorites, clearFavorites } = useCasaViva();
+  const [list, setList] = useState<Property[]>([]);
+  useEffect(() => { api.favoriteListings(favorites).then(setList).catch(() => setList([])); }, [favorites]);
   const { toast } = useToast();
   return (
     <>
@@ -774,13 +755,28 @@ export function FavoritesPage() {
 }
 
 export function FinderPage() {
-  const { properties, locations } = useCasaViva();
+  const { locations } = useCasaViva();
   const [step, setStep] = useState(0);
+  const [inventory, setInventory] = useState<Property[]>([]);
+  const [searchOptions, setSearchOptions] = useState<SearchOptions>({ property_types: [], amenities: [], locations: [] });
   const [criteria, setCriteria] = useState<MatchCriteria>({
     required: {},
     preferred: { amenities: [] },
   });
-  const results = step >= 4 ? matchProperties(properties, criteria) : [];
+  useEffect(() => { api.searchOptions().then(setSearchOptions).catch(() => setSearchOptions({ property_types: [], amenities: [], locations: [] })); }, []);
+  useEffect(() => {
+    if (step < 4) return;
+    const params = new URLSearchParams();
+    if (criteria.required.municipality) params.set("municipality", criteria.required.municipality);
+    if (criteria.required.maxPrice) params.set("price_max", String(criteria.required.maxPrice));
+    if (criteria.required.propertyType) params.set("property_type", criteria.required.propertyType);
+    if (criteria.required.minBedrooms) params.set("bedrooms_min", String(criteria.required.minBedrooms));
+    if (criteria.required.minBathrooms) params.set("bathrooms_min", String(criteria.required.minBathrooms));
+    api.publicListingsAll(params.toString()).then(setInventory).catch(() => setInventory([]));
+  }, [step, criteria.required]);
+  const results = step >= 4 ? matchProperties(inventory, criteria) : [];
+  const typeOptions: [string, PropertyType][] = searchOptions.property_types.map((type) => [type.name, type.code]);
+  const amenities = searchOptions.amenities.map((amenity) => amenity.name);
   const toggleAmenity = (a: string) =>
     setCriteria((c) => ({
       ...c,
@@ -901,13 +897,7 @@ export function FinderPage() {
           <Wizard title="¿Qué te gustaría encontrar?">
             <p>Estas son preferencias, no requisitos.</p>
             <div className="choice-grid">
-              {[
-                "Patio",
-                "Jardín",
-                "Seguridad",
-                "Área de juegos",
-                "Áreas verdes",
-              ].map((a) => (
+              {amenities.map((a) => (
                 <button
                   className={`choice ${criteria.preferred.amenities?.includes(a) ? "active" : ""}`}
                   onClick={() => toggleAmenity(a)}

@@ -1,6 +1,6 @@
-import hashlib
 import secrets
 import uuid
+from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
@@ -61,17 +61,20 @@ class User(AbstractBaseUser, PermissionsMixin):
 class RecoveryCode(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="recovery_codes")
-    code_hash = models.CharField(max_length=64)
+    code_hash = models.CharField(max_length=256)
     used_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     @staticmethod
     def digest(code):
-        return hashlib.sha256(code.encode()).hexdigest()
+        return make_password(code)
+
+    def matches(self, code):
+        return check_password(code, self.code_hash)
 
     @classmethod
     def issue_for(cls, user, count=10):
         cls.objects.filter(user=user, used_at__isnull=True).delete()
-        raw = [secrets.token_hex(5).upper() for _ in range(count)]
+        raw = [secrets.token_hex(16).upper() for _ in range(count)]
         cls.objects.bulk_create([cls(user=user, code_hash=cls.digest(code)) for code in raw])
         return raw

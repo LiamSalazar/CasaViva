@@ -8,3 +8,18 @@ export async function serverApi<T>(path: string): Promise<T | undefined> {
     return undefined;
   }
 }
+
+export async function serverFetchAllPages<T>(path: string): Promise<T[]> {
+  const items: T[] = [];
+  let next: string | null = path;
+  while (next) {
+    const normalized: string = next.startsWith("http")
+      ? `${new URL(next).pathname}${new URL(next).search}`
+      : next;
+    const page = await serverApi<{ results: T[]; next: string | null }>(normalized);
+    if (!page) break;
+    items.push(...page.results);
+    next = page.next;
+  }
+  return items;
+}

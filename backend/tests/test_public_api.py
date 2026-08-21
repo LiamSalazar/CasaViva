@@ -1,4 +1,5 @@
 import pytest
+from django.core.management import call_command
 from django.utils import timezone
 
 
@@ -22,6 +23,7 @@ def test_public_listing_visibility_and_no_internal_leak(client, catalog):
 
 @pytest.mark.django_db
 def test_public_inquiry_deduplicates_exact_email(client, catalog):
+    call_command("seed_system")
     payload = {"first_name": "Persona", "email": "PERSONA@example.test", "message": "Información", "listing_slug": "casa-modelo", "privacy_consent": True}
     assert client.post("/api/v1/public/inquiries/", payload, content_type="application/json").status_code == 201
     assert client.post("/api/v1/public/inquiries/", payload, content_type="application/json").status_code == 201

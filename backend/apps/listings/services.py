@@ -1,9 +1,33 @@
+from decimal import Decimal, InvalidOperation
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from apps.audit.services import audit_event
 from .models import AvailabilityRecord, Listing, PriceRecord, SlugRedirect
-from apps.crm.models import Sale
+from apps.crm.models import Inquiry, LeadInterest, Sale, Visit
+
+
+def _decimal(value, field):
+    if value in (None, ""):
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValidationError({field: "Captura un número válido."})
+
+
+def _effective_datetime(value, field="effective_from"):
+    if value in (None, ""):
+        return timezone.now()
+    if isinstance(value, str):
+        value = parse_datetime(value)
+    if value is None:
+        raise ValidationError({field: "Captura una fecha y hora válidas."})
+    if timezone.is_naive(value):
+        value = timezone.make_aware(value, timezone.get_current_timezone())
+    return value
 
 
 @transaction.atomic
@@ -11,13 +35,27 @@ def change_price(offering, actor, *, price_type, amount_min=None, amount_max=Non
     if not actor.has_perm("catalog.manage_offerings"):
         raise PermissionDenied()
     locked = type(offering).all_objects.select_for_update().get(pk=offering.pk)
+    if price_type not in PriceRecord.Type.values:
+        raise ValidationError({"price_type": "Selecciona un tipo de precio válido."})
+    amount_min = _decimal(amount_min, "amount_min")
+    amount_max = _decimal(amount_max, "amount_max")
+    if price_type == PriceRecord.Type.ON_REQUEST and (amount_min is not None or amount_max is not None):
+        raise ValidationError({"amount_min": "Precio a consultar no admite importes."})
     if price_type != PriceRecord.Type.ON_REQUEST and amount_min is None:
         raise ValidationError({"amount_min": "Captura un precio o selecciona Precio a consultar."})
+    if price_type == PriceRecord.Type.RANGE and amount_max is None:
+        raise ValidationError({"amount_max": "Captura el precio máximo del rango."})
     if amount_min is not None and amount_min < 0:
         raise ValidationError({"amount_min": "El precio no puede ser negativo."})
-    now = effective_from or timezone.now()
+    if amount_max is not None and amount_max < 0:
+        raise ValidationError({"amount_max": "El precio no puede ser negativo."})
+    if amount_min is not None and amount_max is not None and amount_max < amount_min:
+        raise ValidationError({"amount_max": "El precio máximo no puede ser menor que el mínimo."})
+    now = _effective_datetime(effective_from)
     current = PriceRecord.objects.select_for_update().filter(offering=locked, effective_to__isnull=True).first()
     if current:
+        if now <= current.effective_from:
+            raise ValidationError({"effective_from": "La nueva fecha debe ser posterior al precio vigente."})
         current.effective_to = now
         current.save(update_fields=["effective_to", "updated_at"])
     record = PriceRecord.objects.create(offering=locked, price_type=price_type, amount_min=amount_min, amount_max=amount_max, effective_from=now, source_record=source_record, observations=observations, created_by=actor)
@@ -27,10 +65,16 @@ def change_price(offering, actor, *, price_type, amount_min=None, amount_max=Non
 
 @transaction.atomic
 def change_availability(offering, actor, *, status, effective_from=None, notes=None, request=None):
+    if not actor.has_perm("catalog.manage_offerings"):
+        raise PermissionDenied()
+    if status not in AvailabilityRecord.Status.values:
+        raise ValidationError({"status": "Selecciona una disponibilidad válida."})
     locked = type(offering).all_objects.select_for_update().get(pk=offering.pk)
-    now = effective_from or timezone.now()
+    now = _effective_datetime(effective_from)
     current = AvailabilityRecord.objects.select_for_update().filter(offering=locked, effective_to__isnull=True).first()
     if current:
+        if now <= current.effective_from:
+            raise ValidationError({"effective_from": "La nueva fecha debe ser posterior a la disponibilidad vigente."})
         current.effective_to = now
         current.save(update_fields=["effective_to", "updated_at"])
     record = AvailabilityRecord.objects.create(offering=locked, status=status, effective_from=now, changed_by=actor, notes=notes)
@@ -107,7 +151,14 @@ def hard_delete_listing(listing, actor, *, confirmation, reason, request=None):
         raise ValidationError("Primero archiva la propiedad.")
     if confirmation != listing.title:
         raise ValidationError({"confirmation": f'Escribe exactamente "{listing.title}".'})
-    if Sale.objects.filter(listing=listing).exists() or Sale.objects.filter(offering=listing.offering).exists():
+    if Sale.objects.filter(Q(listing=listing) | Q(offering=listing.offering)).exists():
         raise ValidationError("Este registro forma parte del historial de una venta y no puede eliminarse definitivamente. Puedes archivarlo.")
+    has_activity = (
+        Visit.objects.filter(offering=listing.offering).exists()
+        or Inquiry.objects.filter(listing=listing).exists()
+        or LeadInterest.objects.filter(offering=listing.offering).exists()
+    )
+    if has_activity:
+        raise ValidationError("Este registro tiene actividad comercial y sólo puede archivarse.")
     audit_event(actor, "HARD_DELETE", listing, old_values={"title": listing.title, "slug": listing.slug, "offering_id": str(listing.offering_id)}, request=request, reason=reason)
     listing.delete()

@@ -46,31 +46,41 @@ class BusinessViewSet(viewsets.ModelViewSet):
 
 class DeveloperViewSet(BusinessViewSet):
     required_permission = "catalog.manage_developers"
-    queryset = Developer.objects.all()
+    queryset = Developer.objects.order_by("name", "id")
     serializer_class = DeveloperSerializer
 
 class DevelopmentViewSet(BusinessViewSet):
     required_permission = "catalog.manage_developments"
-    queryset = Development.objects.select_related("developer", "state", "municipality")
+    queryset = Development.objects.select_related("developer", "state", "municipality", "locality", "neighborhood").prefetch_related("developmentamenity_set__amenity", "media_links__media").order_by("name", "id")
     serializer_class = DevelopmentSerializer
     filterset_fields = ["developer", "state", "municipality", "is_active", "is_published"]
 
+    def perform_update(self, serializer):
+        old_slug = serializer.instance.slug
+        super().perform_update(serializer)
+        if serializer.instance.slug != old_slug:
+            from apps.listings.models import SlugRedirect
+            SlugRedirect.objects.update_or_create(
+                old_path=f"/desarrollos/{old_slug}",
+                defaults={"new_path": f"/desarrollos/{serializer.instance.slug}"},
+            )
+
 class HousingModelViewSet(BusinessViewSet):
     required_permission = "catalog.manage_models"
-    queryset = HousingModel.objects.select_related("developer")
+    queryset = HousingModel.objects.select_related("developer").order_by("name", "id")
     serializer_class = HousingModelSerializer
     filterset_fields = ["developer", "is_active"]
 
 class DevelopmentModelViewSet(BusinessViewSet):
     required_permission = "catalog.manage_models"
-    queryset = DevelopmentModel.objects.select_related("development__developer", "housing_model")
+    queryset = DevelopmentModel.objects.select_related("development__developer", "housing_model").order_by("development__name", "housing_model__name", "id")
     serializer_class = DevelopmentModelSerializer
     filterset_fields = ["development", "housing_model", "is_active"]
     search_fields = ["development__name", "housing_model__name"]
 
 class OfferingViewSet(BusinessViewSet):
     required_permission = "catalog.manage_offerings"
-    queryset = PropertyOffering.objects.select_related("property_type", "development_model__development__developer", "development_model__housing_model")
+    queryset = PropertyOffering.objects.select_related("property_type", "development_model__development__developer", "development_model__housing_model").order_by("-updated_at", "id")
     serializer_class = OfferingSerializer
     filterset_fields = ["source_type", "development_model", "property_type", "state", "municipality", "is_active"]
     search_fields = ["internal_reference", "variant_name", "development_model__development__name", "development_model__housing_model__name"]
@@ -112,6 +122,6 @@ class AmenityViewSet(CatalogViewSet):
     serializer_class = AmenitySerializer
 
 class FeatureViewSet(CatalogViewSet):
-    queryset = FeatureDefinition.objects.all()
+    queryset = FeatureDefinition.objects.order_by("sort_order", "label", "id")
     serializer_class = FeatureDefinitionSerializer
     search_fields = ["label", "code", "category"]

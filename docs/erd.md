@@ -1,6 +1,6 @@
 # Diagrama entidad–relación
 
-El diagrama representa las entidades empresariales de las migraciones `0001_initial`. Las tablas internas de Django (`auth_group`, permisos, sesiones, content types y `otp_totp_totpdevice`) se señalan por su relación funcional, pero sus columnas pertenecen al framework.
+El diagrama representa las entidades empresariales de todas las migraciones vigentes. Las tablas internas de Django (`auth_group`, permisos, sesiones, content types y `otp_totp_totpdevice`) se señalan por su relación funcional, pero sus columnas pertenecen al framework.
 
 ```mermaid
 erDiagram
@@ -29,7 +29,7 @@ erDiagram
   HOUSING_MODEL { uuid id PK uuid developer_id FK string name string internal_code string slug UK text base_description boolean is_active integer version datetime archived_at }
   DEVELOPMENT_MODEL { uuid id PK uuid development_id FK uuid housing_model_id FK string display_name_override boolean is_active integer version datetime archived_at }
   PROPERTY_TYPE { uuid id PK string code UK string name boolean is_active integer sort_order }
-  PROPERTY_OFFERING { uuid id PK string source_type uuid development_model_id FK string variant_name uuid property_type_id FK uuid state_id FK uuid municipality_id FK decimal bedrooms_min decimal bedrooms_max decimal bathrooms_total integer parking_min decimal construction_area_min decimal construction_area_max string construction_area_basis decimal land_area_min decimal land_area_max string land_area_basis decimal default_commission_rate integer version datetime archived_at }
+  PROPERTY_OFFERING { uuid id PK string source_type string condition uuid development_model_id FK string variant_name uuid property_type_id FK uuid state_id FK uuid municipality_id FK uuid locality_id FK uuid neighborhood_id FK string street_address string postal_code decimal latitude decimal longitude decimal bedrooms_min decimal bedrooms_max decimal bathrooms_total integer full_bathrooms integer half_bathrooms integer parking_min integer parking_max integer levels_min integer levels_max decimal construction_area_min decimal construction_area_max string construction_area_basis decimal land_area_min decimal land_area_max string land_area_basis decimal garden_area_min decimal garden_area_max string garden_area_basis decimal default_commission_rate integer version datetime archived_at }
   AMENITY { uuid id PK string name string slug UK string category boolean is_active integer sort_order }
   DEVELOPMENT_AMENITY { bigint id PK uuid development_id FK uuid amenity_id FK }
   OFFERING_AMENITY { bigint id PK uuid offering_id FK uuid amenity_id FK }
@@ -58,6 +58,7 @@ erDiagram
   MARKETING_SPEND { uuid id PK uuid campaign_id FK date date decimal amount string currency }
   HOME_CONTENT { uuid id PK string key UK string hero_title string editorial_title text editorial_body uuid editorial_media_id FK integer version datetime archived_at }
   GUIDE { uuid id PK string slug UK string title text excerpt text content string category uuid hero_media_id FK boolean is_published boolean is_featured datetime published_at integer version datetime archived_at }
+  LOCATION_CONTENT { uuid id PK uuid municipality_id FK string slug UK text description uuid hero_media_id FK boolean is_featured decimal latitude decimal longitude integer version datetime archived_at }
   AUDIT_EVENT { uuid id PK datetime occurred_at uuid actor_user_id FK string action string entity_type string entity_id json old_values json new_values string request_id string ip_hash boolean success text reason }
 
   USER ||--o{ RECOVERY_CODE : posee
@@ -107,6 +108,8 @@ erDiagram
   MARKETING_CAMPAIGN ||--o{ MARKETING_SPEND : acumula
   MEDIA_ASSET o|--o{ GUIDE : ilustra
   MEDIA_ASSET o|--o{ HOME_CONTENT : ilustra
+  MUNICIPALITY ||--o| LOCATION_CONTENT : describe
+  MEDIA_ASSET o|--o{ LOCATION_CONTENT : ilustra
   USER o|--o{ AUDIT_EVENT : actua
 ```
 

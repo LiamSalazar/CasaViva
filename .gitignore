@@ -9,5 +9,8 @@ backend/__pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
+coverage.json
+test-results/
+playwright-report/
 .next/
 node_modules/

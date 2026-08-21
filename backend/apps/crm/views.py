@@ -1,3 +1,5 @@
+from django.db import transaction
+from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
@@ -5,8 +7,12 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from apps.accounts.permissions import HasRequiredPermission, IsMfaVerifiedAdmin
 from apps.common.exports import csv_response
-from .models import Inquiry, Lead, Sale, Visit
+from apps.common.exceptions import Conflict
+from apps.common.services import archive_entity, restore_entity
+from apps.audit.services import audit_event
+from .models import Inquiry, Lead, LeadStageHistory, Sale, Visit
 from .serializers import InquirySerializer, LeadSerializer, PublicInquirySerializer, SaleSerializer, VisitSerializer
+from .services import change_lead_stage, create_sale
 from drf_spectacular.utils import extend_schema, OpenApiTypes
 
 
@@ -31,6 +37,38 @@ class LeadViewSet(viewsets.ModelViewSet):
     filterset_fields = ["status", "owner_user"]
     search_fields = ["first_name", "last_name", "email", "phone_normalized"]
 
+    @transaction.atomic
+    def perform_create(self, serializer):
+        lead = serializer.save(created_by=self.request.user, updated_by=self.request.user)
+        LeadStageHistory.objects.create(lead=lead, stage=lead.status, started_at=timezone.now(), changed_by=self.request.user)
+        audit_event(self.request.user, "CREATE", lead, request=self.request)
+
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        lead = Lead.all_objects.select_for_update().get(pk=self.get_object().pk)
+        if request.data.get("version") is None or int(request.data["version"]) != lead.version:
+            raise Conflict()
+        target_stage = request.data.get("status", lead.status)
+        data = {key: value for key, value in request.data.items() if key not in ("status", "version")}
+        if data:
+            serializer = self.get_serializer(lead, data=data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            lead = serializer.save(updated_by=request.user, version=lead.version + 1)
+            audit_event(request.user, "UPDATE", lead, request=request)
+        if target_stage != lead.status:
+            lead = change_lead_stage(lead, target_stage, request.user)
+        return Response(self.get_serializer(lead).data)
+
+    def destroy(self, request, *args, **kwargs):
+        archive_entity(self.get_object(), request.user)
+        return Response(status=204)
+
+    @action(detail=True, methods=["post"])
+    def restore(self, request, pk=None):
+        lead = Lead.all_objects.get(pk=pk)
+        restore_entity(lead, request.user)
+        return Response(self.get_serializer(lead).data)
+
     @action(detail=False, methods=["get"])
     def export(self, request):
         rows = [[x.first_name, x.last_name or "", x.email or "", x.phone_raw or "", x.get_status_display(), x.created_at.isoformat()] for x in self.filter_queryset(self.get_queryset())]
@@ -39,7 +77,7 @@ class LeadViewSet(viewsets.ModelViewSet):
 class InquiryViewSet(viewsets.ModelViewSet):
     permission_classes = [IsMfaVerifiedAdmin, HasRequiredPermission]
     required_permission = "crm.manage_inquiries"
-    queryset = Inquiry.objects.select_related("lead", "listing", "assigned_to")
+    queryset = Inquiry.objects.select_related("lead", "listing", "assigned_to").order_by("-created_at", "id")
     serializer_class = InquirySerializer
     filterset_fields = ["status", "channel", "assigned_to"]
     search_fields = ["lead__first_name", "lead__last_name", "lead__email", "message"]
@@ -63,10 +101,16 @@ class SaleViewSet(viewsets.ModelViewSet):
     serializer_class = SaleSerializer
     filterset_fields = ["status", "closed_at"]
 
-    def perform_create(self, serializer):
-        rate = serializer.validated_data.get("commission_rate") or serializer.validated_data["offering"].default_commission_rate
-        amount = serializer.validated_data["sale_price"] * rate / 100 if rate is not None else None
-        serializer.save(created_by=self.request.user, commission_rate=rate, commission_amount=amount)
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        sale = create_sale(actor=request.user, **serializer.validated_data)
+        return Response(self.get_serializer(sale).data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        if set(request.data) - {"status"}:
+            return Response({"detail": "Después del cierre sólo puede cambiarse el estado de la venta."}, status=400)
+        return super().update(request, *args, **kwargs)
 
     @action(detail=False, methods=["get"])
     def export(self, request):

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AdminLayout, AdminTable } from "@/components/admin";
-import { apiFetch } from "@/services/api";
+import { apiFetch, fetchAllPages } from "@/services/api";
 import { formatCurrency, formatDate, slugify } from "@/lib/utils";
 
 type BiData = {
@@ -54,19 +54,19 @@ const resources: Record<string, { title: string; endpoint: string; exportable?: 
 
 export function AdminResourcePage({ resource }: { resource: keyof typeof resources }) {
   const config = resources[resource]; const [rows, setRows] = useState<Array<any>>([]); const [query, setQuery] = useState(""); const [error, setError] = useState("");
-  useEffect(() => { apiFetch<{ results: any[] }>(`/api/v1/admin/${config.endpoint}/?page_size=100&search=${encodeURIComponent(query)}`).then((x) => setRows(x.results)).catch((e) => setError(e.message)); }, [config.endpoint, query]);
+  useEffect(() => { fetchAllPages<any>(`/api/v1/admin/${config.endpoint}/?page_size=100&search=${encodeURIComponent(query)}`).then(setRows).catch((e) => setError(e.message)); }, [config.endpoint, query]);
   return <AdminLayout title={config.title}><div className="admin-title"><div><span className="eyebrow">Operación</span><h2>{config.title}</h2></div></div><div className="admin-toolbar"><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Buscar en ${config.title.toLowerCase()}`} /><span>{rows.length} registros</span>{config.exportable && <a className="button secondary" href={`/api/v1/admin/${config.endpoint}/export/`}>Exportar CSV</a>}</div>{error ? <p className="form-error">{error}</p> : rows.length ? <AdminTable heads={config.heads}>{rows.map((x) => <tr key={x.id}>{config.row(x).map((value, index) => <td key={index}>{value}</td>)}</tr>)}</AdminTable> : <div className="empty-state"><p>No hay {config.title.toLowerCase()} en este momento.</p></div>}</AdminLayout>;
 }
 
 export function AdminAuditPage() {
   const [rows, setRows] = useState<any[]>([]); const [action, setAction] = useState("");
-  useEffect(() => { apiFetch<{ results: any[] }>(`/api/v1/admin/audit/?page_size=100${action ? `&action=${action}` : ""}`).then((x) => setRows(x.results)); }, [action]);
+  useEffect(() => { fetchAllPages<any>(`/api/v1/admin/audit/?page_size=100${action ? `&action=${action}` : ""}`).then(setRows); }, [action]);
   return <AdminLayout title="Historial"><div className="admin-title"><div><span className="eyebrow">Historial</span><h2>Actividad del negocio</h2></div></div><div className="admin-toolbar"><select value={action} onChange={(e) => setAction(e.target.value)}><option value="">Todas las acciones</option><option value="CREATE">Creación</option><option value="UPDATE">Cambio</option><option value="PUBLISH">Publicación</option><option value="ARCHIVE">Archivo</option><option value="PRICE_CHANGE">Cambio de precio</option></select></div><AdminTable heads={["Fecha", "Usuario", "Acción", "Registro", "Resultado"]}>{rows.map((x) => <tr key={x.id}><td>{formatDate(x.occurred_at)}</td><td>{x.actor_name || "Sistema"}</td><td>{x.action_label}</td><td>{x.entity_type}</td><td>{x.success ? "Realizada" : "Fallida"}</td></tr>)}</AdminTable></AdminLayout>;
 }
 
 export function AdminCatalogsPage() {
   const [types, setTypes] = useState<any[]>([]); const [amenities, setAmenities] = useState<any[]>([]); const [features, setFeatures] = useState<any[]>([]);
-  const load = useCallback(() => Promise.all(["property-types", "amenities", "features"].map((x) => apiFetch<{ results: any[] }>(`/api/v1/admin/${x}/?page_size=100`))).then(([a,b,c]) => {setTypes(a.results); setAmenities(b.results); setFeatures(c.results);}), []);
+  const load = useCallback(() => Promise.all(["property-types", "amenities", "features"].map((x) => fetchAllPages<any>(`/api/v1/admin/${x}/?page_size=100`))).then(([a,b,c]) => {setTypes(a); setAmenities(b); setFeatures(c);}), []);
   useEffect(() => { void load(); }, [load]);
   return <AdminLayout title="Catálogos"><div className="admin-title"><div><span className="eyebrow">Configuración de negocio</span><h2>Catálogos</h2></div></div><div className="admin-panels"><CatalogBlock title="Tipos de propiedad" endpoint="property-types" rows={types} onChanged={load} /><CatalogBlock title="Amenidades" endpoint="amenities" rows={amenities} onChanged={load} /><CatalogBlock title="Características" endpoint="features" rows={features} onChanged={load} /></div></AdminLayout>;
 }
@@ -98,7 +98,7 @@ export function AdminSimpleResourcePage({ resource }: { resource: keyof typeof s
 
 function ReadonlySimpleResourcePage({ resource }: { resource: Exclude<keyof typeof simpleResources, "desarrolladoras" | "modelos" | "usuarios"> }) {
   const config = simpleResources[resource]; const [rows, setRows] = useState<any[]>([]); const [error, setError] = useState("");
-  useEffect(() => { apiFetch<{ results: any[] }>(`/api/v1/admin/${config.endpoint}/?page_size=100`).then((x) => setRows(x.results)).catch((e) => setError(e.message)); }, [config.endpoint]);
+  useEffect(() => { fetchAllPages<any>(`/api/v1/admin/${config.endpoint}/?page_size=100`).then(setRows).catch((e) => setError(e.message)); }, [config.endpoint]);
   return <AdminLayout title={config.title}><div className="admin-title"><div><span className="eyebrow">Administración</span><h2>{config.title}</h2></div></div>{error ? <p className="form-error">{error}</p> : rows.length ? <AdminTable heads={config.heads}>{rows.map((x) => <tr key={x.id}>{config.cells(x).map((cell, i) => <td key={i}>{cell}</td>)}</tr>)}</AdminTable> : <div className="empty-state"><p>No hay registros.</p></div>}</AdminLayout>;
 }
 
@@ -109,21 +109,21 @@ function EditableCatalogEntityPage({ resource }: { resource: "desarrolladoras" |
   const [relation, setRelation] = useState<Record<string, string>>({}); const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
   const load = useCallback(async () => {
     const [items, developerData, developmentData] = await Promise.all([
-      apiFetch<{ results: any[] }>(`/api/v1/admin/${config.endpoint}/?page_size=100&archived=all`),
-      apiFetch<{ results: any[] }>("/api/v1/admin/developers/?page_size=100"),
-      apiFetch<{ results: any[] }>("/api/v1/admin/developments/?page_size=100"),
+      fetchAllPages<any>(`/api/v1/admin/${config.endpoint}/?page_size=100&archived=all`),
+      fetchAllPages<any>("/api/v1/admin/developers/?page_size=100"),
+      fetchAllPages<any>("/api/v1/admin/developments/?page_size=100"),
     ]);
-    setRows(items.results); setDevelopers(developerData.results); setDevelopments(developmentData.results);
+    setRows(items); setDevelopers(developerData); setDevelopments(developmentData);
   }, [config.endpoint]);
   useEffect(() => {
     let active = true;
     Promise.all([
-      apiFetch<{ results: any[] }>(`/api/v1/admin/${config.endpoint}/?page_size=100&archived=all`),
-      apiFetch<{ results: any[] }>("/api/v1/admin/developers/?page_size=100"),
-      apiFetch<{ results: any[] }>("/api/v1/admin/developments/?page_size=100"),
+      fetchAllPages<any>(`/api/v1/admin/${config.endpoint}/?page_size=100&archived=all`),
+      fetchAllPages<any>("/api/v1/admin/developers/?page_size=100"),
+      fetchAllPages<any>("/api/v1/admin/developments/?page_size=100"),
     ]).then(([items, developerData, developmentData]) => {
       if (!active) return;
-      setRows(items.results); setDevelopers(developerData.results); setDevelopments(developmentData.results);
+      setRows(items); setDevelopers(developerData); setDevelopments(developmentData);
     }).catch((e) => { if (active) setError(e.message); });
     return () => { active = false; };
   }, [config.endpoint]);
@@ -152,8 +152,8 @@ function EditableCatalogEntityPage({ resource }: { resource: "desarrolladoras" |
 function UserManagementPage() {
   const [rows, setRows] = useState<any[]>([]); const [creating, setCreating] = useState(false); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const [form, setForm] = useState({ first_name: "", last_name: "", email: "", password: "", role_name: "Founder Admin" });
-  const load = useCallback(() => apiFetch<{ results: any[] }>("/api/v1/admin/users/?page_size=100").then((x) => setRows(x.results)), []);
-  useEffect(() => { apiFetch<{ results: any[] }>("/api/v1/admin/users/?page_size=100").then((x) => setRows(x.results)).catch((e) => setError(e.message)); }, []);
+  const load = useCallback(() => fetchAllPages<any>("/api/v1/admin/users/?page_size=100").then(setRows), []);
+  useEffect(() => { fetchAllPages<any>("/api/v1/admin/users/?page_size=100").then(setRows).catch((e) => setError(e.message)); }, []);
   const create = async () => { setBusy(true); setError(""); try { await apiFetch("/api/v1/admin/users/", { method: "POST", body: JSON.stringify(form) }); setCreating(false); setForm({ first_name: "", last_name: "", email: "", password: "", role_name: "Founder Admin" }); await load(); } catch (e) { setError(e instanceof Error ? e.message : "No fue posible crear el usuario"); } finally { setBusy(false); } };
   const changeActive = async (user: any) => { setBusy(true); setError(""); try { await apiFetch(`/api/v1/admin/users/${user.id}/`, { method: "PATCH", body: JSON.stringify({ is_active: !user.is_active, role_name: user.role }) }); await load(); } catch (e) { setError(e instanceof Error ? e.message : "No fue posible cambiar el acceso"); } finally { setBusy(false); } };
   const securityAction = async (user: any, action: "revoke-sessions" | "reset-mfa") => { setBusy(true); setError(""); try { await apiFetch(`/api/v1/admin/users/${user.id}/${action}/`, { method: "POST", body: "{}" }); await load(); } catch (e) { setError(e instanceof Error ? e.message : "No fue posible completar la acción"); } finally { setBusy(false); } };

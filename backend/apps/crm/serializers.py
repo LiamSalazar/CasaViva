@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Inquiry, Lead, Sale, Visit
+from .models import Inquiry, Lead, PrivacyNoticeVersion, Sale, Visit
 from .services import create_inquiry
 from apps.listings.models import Listing
 
@@ -13,12 +13,17 @@ class PublicInquirySerializer(serializers.Serializer):
     listing_slug = serializers.SlugField(required=False, allow_blank=True)
     session_id = serializers.UUIDField(required=False, allow_null=True)
     privacy_consent = serializers.BooleanField()
+    privacy_notice_version = serializers.PrimaryKeyRelatedField(queryset=PrivacyNoticeVersion.objects.filter(is_active=True), required=False)
 
     def validate(self, attrs):
         if not attrs.get("email") and not attrs.get("phone"):
             raise serializers.ValidationError("Captura correo o teléfono.")
         if not attrs["privacy_consent"]:
             raise serializers.ValidationError({"privacy_consent": "Debes aceptar el aviso de privacidad."})
+        notice = attrs.get("privacy_notice_version") or PrivacyNoticeVersion.objects.filter(is_active=True).order_by("-published_at").first()
+        if not notice:
+            raise serializers.ValidationError({"privacy_consent": "El aviso de privacidad no está disponible temporalmente."})
+        attrs["privacy_notice_version"] = notice
         return attrs
 
     def create(self, data):
@@ -59,3 +64,15 @@ class SaleSerializer(serializers.ModelSerializer):
         model = Sale
         fields = "__all__"
         read_only_fields = ["commission_amount", "created_by"]
+
+    def validate(self, attrs):
+        if attrs.get("sale_price") is not None and attrs["sale_price"] < 0:
+            raise serializers.ValidationError({"sale_price": "El precio de venta no puede ser negativo."})
+        rate = attrs.get("commission_rate")
+        if rate is not None and not 0 <= rate <= 100:
+            raise serializers.ValidationError({"commission_rate": "La comisión debe estar entre 0 y 100%."})
+        listing = attrs.get("listing")
+        offering = attrs.get("offering")
+        if listing and offering and listing.offering_id != offering.id:
+            raise serializers.ValidationError({"listing": "La publicación no corresponde a la propiedad seleccionada."})
+        return attrs

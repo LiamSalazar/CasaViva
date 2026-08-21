@@ -18,6 +18,7 @@ from .models import RecoveryCode
 from .serializers import LoginSerializer, TotpSerializer, UserSerializer
 from .permissions import IsMfaVerifiedAdmin
 from .services import change_user_access, revoke_user_sessions
+from .security import has_recent_mfa
 
 
 class LoginThrottle(ScopedRateThrottle):
@@ -50,6 +51,8 @@ def enroll_mfa(request):
     if not user_id:
         return Response({"detail": "La autenticación previa expiró."}, status=401)
     user = User.objects.get(pk=user_id)
+    if TOTPDevice.objects.filter(user=user, confirmed=True).exists():
+        return Response({"detail": "La cuenta ya tiene MFA configurado. Verifica el dispositivo existente."}, status=403)
     device, _ = TOTPDevice.objects.get_or_create(user=user, confirmed=False, defaults={"name": "CasaViva"})
     image = qrcode.make(device.config_url)
     output = io.BytesIO()
@@ -70,11 +73,12 @@ def verify_mfa(request):
         return Response({"detail": "La autenticación previa expiró."}, status=401)
     user = User.objects.get(pk=user_id)
     code = serializer.validated_data["code"].replace("-", "").upper()
-    device = TOTPDevice.objects.filter(user=user).first()
+    confirmed_device = TOTPDevice.objects.filter(user=user, confirmed=True).first()
+    device = confirmed_device or TOTPDevice.objects.filter(user=user, confirmed=False).first()
     verified = bool(device and device.verify_token(code))
     recovery = None
     if not verified:
-        recovery = RecoveryCode.objects.filter(user=user, code_hash=RecoveryCode.digest(code), used_at__isnull=True).first()
+        recovery = next((candidate for candidate in RecoveryCode.objects.filter(user=user, used_at__isnull=True) if candidate.matches(code)), None)
         verified = bool(recovery)
     if not verified:
         audit_event(user, "LOGIN_FAILURE", user, request=request, success=False, reason="MFA inválido")
@@ -84,7 +88,7 @@ def verify_mfa(request):
         recovery.used_at = timezone.now()
         recovery.save(update_fields=["used_at"])
     new_codes = None
-    if device and not device.confirmed:
+    if device and not confirmed_device and not device.confirmed:
         device.confirmed = True
         device.save(update_fields=["confirmed"])
         new_codes = RecoveryCode.issue_for(user)
@@ -109,14 +113,16 @@ def logout_view(request):
 
 @extend_schema(responses={200: UserSerializer})
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def me(request):
+    if not request.user.is_authenticated:
+        return Response({"authenticated": False, "can_manage_users": False})
     return Response(UserSerializer(request.user).data)
 
 
 class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
-    queryset = __import__("apps.accounts.models", fromlist=["User"]).User.objects.prefetch_related("groups")
+    queryset = __import__("apps.accounts.models", fromlist=["User"]).User.objects.prefetch_related("groups").order_by("email", "id")
     permission_classes = [IsMfaVerifiedAdmin]
 
     def initial(self, request, *args, **kwargs):
@@ -125,11 +131,8 @@ class UserViewSet(viewsets.ModelViewSet):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Sólo el Owner puede administrar usuarios.")
         if request.method not in ("GET", "HEAD", "OPTIONS"):
-            from datetime import datetime, timedelta
-            from django.utils import timezone
             from rest_framework.exceptions import PermissionDenied
-            verified = request.session.get("mfa_verified_at")
-            if not verified or timezone.now() - datetime.fromisoformat(verified) > timedelta(minutes=15):
+            if not has_recent_mfa(request):
                 raise PermissionDenied("Vuelve a verificar tu identidad para cambiar accesos.")
 
     def perform_create(self, serializer):
