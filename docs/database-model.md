@@ -55,7 +55,7 @@ Todas las entidades editables anteriores incluyen `version` para optimistic lock
 
 | Tabla | Campos principales | Tipo / nulos | Relación / propósito |
 | --- | --- | --- | --- |
-| `listings_pricerecord` | `offering_id`, `price_type`, `amount_min?`, `amount_max?`, `currency`, `effective_from`, `effective_to?`, `source_record_id?`, `observations?` | numeric/timestamptz | Historial; índice único parcial para un vigente. ON_REQUEST no guarda monto. |
+| `listings_pricerecord` | `offering_id`, `price_type`, `amount_min?`, `amount_max?`, `currency`, `effective_from`, `effective_to?`, `source_record_id?`, `observations?` | numeric/timestamptz | Historial; índice único parcial para un vigente. ON_REQUEST no guarda monto y `currency` sólo admite MXN en esta fase. |
 | `listings_availabilityrecord` | `offering_id`, `status`, fechas, `changed_by_id?`, `notes?` | varios | AVAILABLE, TEMPORARILY_UNAVAILABLE, RESERVED, SOLD; un vigente. |
 | `listings_listing` | `offering_id`, `title`, `slug`, descripciones, flags, fechas, SEO opcional | UUID/varchar/text | OneToOne a offering; publicación independiente y slug único. |
 | `listings_slugredirect` | `old_path`, `new_path`, `created_at` | varchar | Preserva URLs mediante 301. |
@@ -91,6 +91,6 @@ Todas las entidades editables anteriores incluyen `version` para optimistic lock
 ## Restricciones e índices relevantes
 
 - Únicos parciales: precio, disponibilidad y etapa de lead vigentes; pareja DevelopmentModel activa.
-- Checks: source type, condición controlada por choices, coordenadas, rangos min/max, montos/medidas/comisión no negativos, comisión hasta 100, formas de precio y periodos temporales, venta/gasto no negativos.
+- Checks: source type, condición controlada por choices, coordenadas, rangos min/max (incluidas recámaras, estacionamientos y niveles), montos/medidas/comisión no negativos, comisión hasta 100, moneda MXN, formas de precio, periodos temporales y estado de venta controlado.
 - B-tree: slugs, estados activos/publicados, geo, relaciones de offering, fecha/nombre de eventos, sesiones y relaciones analíticas.
 - `PROTECT` conserva ventas y relaciones de negocio; `SET_NULL` conserva hechos analíticos/consultas; `CASCADE` sólo elimina puentes o valores dependientes sin identidad histórica propia.

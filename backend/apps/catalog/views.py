@@ -6,7 +6,8 @@ from rest_framework.response import Response
 from apps.accounts.permissions import HasRequiredPermission, IsMfaVerifiedAdmin
 from apps.audit.services import audit_event
 from apps.common.exceptions import Conflict
-from apps.common.services import archive_entity, restore_entity
+from apps.common.services import archive_entity, require_current_version, restore_entity
+from rest_framework.exceptions import ValidationError
 from apps.common.exports import csv_response
 from .models import Amenity, Developer, Development, DevelopmentModel, FeatureDefinition, HousingModel, PropertyOffering, PropertyType
 from .serializers import AmenitySerializer, DeveloperSerializer, DevelopmentSerializer, DevelopmentModelSerializer, FeatureDefinitionSerializer, HousingModelSerializer, OfferingSerializer, PropertyTypeSerializer
@@ -18,16 +19,17 @@ class BusinessViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = self.queryset
-        return qs.model.all_objects.all() if self.request.query_params.get("archived") == "all" and hasattr(qs.model, "all_objects") else qs
+        if self.request.query_params.get("archived") == "all" and hasattr(qs.model, "all_objects"):
+            archived = qs.model.all_objects.all()
+            return archived.order_by(*qs.query.order_by) if qs.query.order_by else archived.order_by("id")
+        return qs
 
     def perform_create(self, serializer):
         obj = serializer.save(created_by=self.request.user, updated_by=self.request.user)
         audit_event(self.request.user, "CREATE", obj, request=self.request)
 
     def perform_update(self, serializer):
-        expected = self.request.data.get("version")
-        if expected is None or int(expected) != serializer.instance.version:
-            raise Conflict()
+        require_current_version(self.request.data.get("version"), serializer.instance.version)
         before = {f.name: str(getattr(serializer.instance, f.name)) for f in serializer.instance._meta.fields}
         obj = serializer.save(updated_by=self.request.user, version=serializer.instance.version + 1)
         audit_event(self.request.user, "UPDATE", obj, old_values=before, request=self.request)
@@ -85,6 +87,16 @@ class OfferingViewSet(BusinessViewSet):
     filterset_fields = ["source_type", "development_model", "property_type", "state", "municipality", "is_active"]
     search_fields = ["internal_reference", "variant_name", "development_model__development__name", "development_model__housing_model__name"]
 
+    def perform_update(self, serializer):
+        if hasattr(serializer.instance, "listing"):
+            raise ValidationError("Modifica esta oferta mediante la propiedad completa.")
+        super().perform_update(serializer)
+
+    def destroy(self, request, *args, **kwargs):
+        if hasattr(self.get_object(), "listing"):
+            raise ValidationError("Archiva esta oferta mediante la propiedad completa.")
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=False, methods=["get"])
     def export(self, request):
         rows = []
@@ -103,6 +115,7 @@ class CatalogViewSet(viewsets.ModelViewSet):
     permission_classes = [IsMfaVerifiedAdmin, HasRequiredPermission]
     required_permission = "catalog.manage_catalogs"
     search_fields = ["name"]
+    filterset_fields = ["is_active"]
 
     def perform_create(self, serializer):
         obj = serializer.save()
@@ -112,6 +125,14 @@ class CatalogViewSet(viewsets.ModelViewSet):
         before = {field.name: str(getattr(serializer.instance, field.name)) for field in serializer.instance._meta.fields}
         obj = serializer.save()
         audit_event(self.request.user, "UPDATE", obj, old_values=before, request=self.request)
+
+    def destroy(self, request, *args, **kwargs):
+        obj = self.get_object()
+        old = obj.is_active
+        obj.is_active = False
+        obj.save(update_fields=["is_active", "updated_at"])
+        audit_event(request.user, "UPDATE", obj, old_values={"is_active": old}, new_values={"is_active": False}, request=request)
+        return Response(status=204)
 
 class PropertyTypeViewSet(CatalogViewSet):
     queryset = PropertyType.objects.all()

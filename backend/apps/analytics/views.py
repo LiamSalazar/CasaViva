@@ -7,7 +7,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
+from apps.common.throttling import FixedScopeThrottle
 from apps.accounts.permissions import CanViewBI, IsMfaVerifiedAdmin
 from apps.crm.models import Inquiry, Sale, Visit
 from apps.listings.models import Listing
@@ -15,24 +15,28 @@ from apps.geo.models import Municipality
 from apps.marketing.models import MarketingCampaign, MarketingSpend
 from apps.crm.models import Lead
 from .models import AnalyticsEvent, AnonymousVisitor, WebSession
-from .serializers import EventSerializer
+from .serializers import EventSerializer, StartSessionSerializer, WebSessionAttributionSerializer
 from drf_spectacular.utils import extend_schema, OpenApiTypes
 
 
-class AnalyticsThrottle(ScopedRateThrottle): scope = "analytics"
+class AnalyticsThrottle(FixedScopeThrottle): scope = "analytics"
 
-@extend_schema(request=OpenApiTypes.OBJECT, responses={201: OpenApiTypes.OBJECT})
+@extend_schema(request=StartSessionSerializer, responses={201: OpenApiTypes.OBJECT})
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([AnalyticsThrottle])
 def start_session(request):
+    serializer = StartSessionSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    data = serializer.validated_data
     now = timezone.now()
-    visitor_id = request.data.get("visitor_id")
+    visitor_id = data.pop("visitor_id", None)
     visitor = AnonymousVisitor.objects.filter(pk=visitor_id).first() if visitor_id else None
     if visitor:
         visitor.last_seen_at = now; visitor.save(update_fields=["last_seen_at", "updated_at"])
     else:
         visitor = AnonymousVisitor.objects.create(first_seen_at=now, last_seen_at=now)
-    session = WebSession.objects.create(visitor=visitor, started_at=now, last_seen_at=now, landing_path=request.data.get("landing_path", "/")[:500], consent_state=request.data.get("consent_state", "ESSENTIAL")[:30], utm_source=request.data.get("utm_source"), utm_medium=request.data.get("utm_medium"), utm_campaign=request.data.get("utm_campaign"), utm_content=request.data.get("utm_content"), utm_term=request.data.get("utm_term"), referrer_domain=request.data.get("referrer_domain"), device_category=request.data.get("device_category"))
+    session = WebSession.objects.create(visitor=visitor, started_at=now, last_seen_at=now, **data)
     return Response({"visitor_id": visitor.id, "session_id": session.id}, status=201)
 
 @extend_schema(request=EventSerializer, responses={201: OpenApiTypes.OBJECT})
@@ -45,6 +49,17 @@ def ingest_event(request):
     event = serializer.save()
     WebSession.objects.filter(pk=event.session_id).update(last_seen_at=timezone.now())
     return Response({"id": event.id}, status=201)
+
+
+@extend_schema(responses={200: WebSessionAttributionSerializer})
+@api_view(["GET"])
+@permission_classes([IsMfaVerifiedAdmin, CanViewBI])
+def session_attribution(request, session_id):
+    try:
+        session = WebSession.objects.get(pk=session_id)
+    except (WebSession.DoesNotExist, ValueError, TypeError):
+        return Response({"detail": "Sesión no encontrada."}, status=404)
+    return Response(WebSessionAttributionSerializer(session).data)
 
 
 def period_bounds(request):
@@ -100,15 +115,38 @@ def bi_overview(request):
         funnel.append({"label": label, "value": value, "conversion_from_previous": round(value / previous_value * 100, 2) if previous_value else None})
         previous_value = value
     inventory = {"registered": Listing.all_objects.count(), "published": Listing.objects.filter(is_published=True).count(), "unpublished": Listing.objects.filter(is_published=False).count(), "archived": Listing.all_objects.filter(archived_at__isnull=False).count()}
-    return Response({"period": {"start": start, "end": end}, "current": current, "previous": prior, "traffic": traffic, "funnel": funnel, "inventory": inventory})
+    lead_ids = Lead.objects.filter(created_at__gte=start, created_at__lt=end).values_list("id", flat=True)
+    cohort = {
+        "leads": Lead.objects.filter(id__in=lead_ids).count(),
+        "with_visit": Lead.objects.filter(id__in=lead_ids, visits__isnull=False).distinct().count(),
+        "with_closed_sale": Lead.objects.filter(id__in=lead_ids, sales__status="CLOSED").distinct().count(),
+    }
+    return Response({
+        "period": {"start": start, "end": end}, "current": current, "previous": prior,
+        "traffic": traffic, "funnel": funnel, "funnel_kind": "period_activity",
+        "funnel_description": "Actividad registrada en cada etapa durante el periodo; no representa una cohorte única.",
+        "lead_cohort": cohort, "inventory": inventory,
+    })
 
 @extend_schema(responses={200: OpenApiTypes.OBJECT})
 @api_view(["GET"])
 @permission_classes([IsMfaVerifiedAdmin, CanViewBI])
 def bi_listing_performance(request):
     start, end, _ = period_bounds(request)
-    rows = Listing.all_objects.annotate(views=Count("analytics_events", filter=Q(analytics_events__event_name="listing_viewed", analytics_events__occurred_at__gte=start, analytics_events__occurred_at__lt=end), distinct=True), inquiries_count=Count("inquiries", filter=Q(inquiries__created_at__gte=start, inquiries__created_at__lt=end), distinct=True), sales_count=Count("sales", filter=Q(sales__closed_at__gte=start, sales__closed_at__lt=end), distinct=True)).values("id", "title", "views", "inquiries_count", "sales_count").order_by("-views")[:100]
-    return Response(list(rows))
+    rows = Listing.all_objects.annotate(
+        views=Count("analytics_events", filter=Q(analytics_events__event_name="listing_viewed", analytics_events__occurred_at__gte=start, analytics_events__occurred_at__lt=end), distinct=True),
+        favorites=Count("analytics_events", filter=Q(analytics_events__event_name="favorite_added", analytics_events__occurred_at__gte=start, analytics_events__occurred_at__lt=end), distinct=True),
+        inquiries_count=Count("inquiries", filter=Q(inquiries__created_at__gte=start, inquiries__created_at__lt=end), distinct=True),
+        visits_count=Count("offering__visits", filter=Q(offering__visits__created_at__gte=start, offering__visits__created_at__lt=end), distinct=True),
+        sales_count=Count("sales", filter=Q(sales__closed_at__gte=start, sales__closed_at__lt=end, sales__status="CLOSED"), distinct=True),
+    ).values("id", "title", "views", "favorites", "inquiries_count", "visits_count", "sales_count").order_by("-views")[:100]
+    result = []
+    for row in rows:
+        row["view_to_inquiry_rate"] = round(row["inquiries_count"] / row["views"] * 100, 2) if row["views"] else None
+        row["inquiry_to_visit_rate"] = round(row["visits_count"] / row["inquiries_count"] * 100, 2) if row["inquiries_count"] else None
+        row["visit_to_sale_rate"] = round(row["sales_count"] / row["visits_count"] * 100, 2) if row["visits_count"] else None
+        result.append(row)
+    return Response(result)
 
 
 @extend_schema(responses={200: OpenApiTypes.OBJECT})

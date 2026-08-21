@@ -1,5 +1,6 @@
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied
 
 from apps.audit.services import audit_event
 from apps.catalog.models import PropertyOffering
@@ -25,11 +26,7 @@ def create_property(validated, offering_serializer, actor, request=None):
     listing_data = validated["listing"]
     listing = Listing.objects.create(offering=offering, created_by=actor, updated_by=actor, **listing_data)
     price = dict(validated["price"])
-    currency = price.pop("currency", "MXN")
-    record = change_price(offering, actor, request=request, **price)
-    if record.currency != currency:
-        record.currency = currency
-        record.save(update_fields=["currency", "updated_at"])
+    change_price(offering, actor, request=request, **price)
     change_availability(offering, actor, request=request, **validated["availability"])
     _replace_media(listing, validated.get("media", []))
     audit_event(actor, "CREATE", listing, request=request)
@@ -65,11 +62,7 @@ def update_property(listing_id, validated, offering_serializer, actor, request=N
         current = PriceRecord.objects.select_for_update().filter(offering=offering, effective_to__isnull=True).first()
         if not _same_price(current, price):
             price = dict(price)
-            currency = price.pop("currency", "MXN")
-            record = change_price(offering, actor, request=request, **price)
-            if record.currency != currency:
-                record.currency = currency
-                record.save(update_fields=["currency", "updated_at"])
+            change_price(offering, actor, request=request, **price)
 
     availability = validated.get("availability")
     if availability is not None:
@@ -98,6 +91,8 @@ def _replace_media(listing, media):
 
 @transaction.atomic
 def archive_property(listing, actor, request=None):
+    if not actor.has_perm("listings.archive_listing"):
+        raise PermissionDenied()
     listing = Listing.all_objects.select_for_update().select_related("offering").get(pk=listing.pk)
     offering = PropertyOffering.all_objects.select_for_update().get(pk=listing.offering_id)
     if listing.is_published:
@@ -109,11 +104,43 @@ def archive_property(listing, actor, request=None):
 
 @transaction.atomic
 def restore_property(listing, actor):
+    if not actor.has_perm("listings.restore_listing"):
+        raise PermissionDenied()
     listing = Listing.all_objects.select_for_update().select_related("offering").get(pk=listing.pk)
     offering = PropertyOffering.all_objects.select_for_update().get(pk=listing.offering_id)
     restore_entity(offering, actor)
     restore_entity(listing, actor)
     return listing
+
+
+@transaction.atomic
+def set_property_featured(listing, actor, *, is_featured, listing_version, request=None):
+    if not actor.has_perm("catalog.manage_offerings"):
+        raise PermissionDenied()
+    locked = Listing.all_objects.select_for_update().get(pk=listing.pk)
+    if locked.version != listing_version:
+        raise Conflict()
+    old_value = locked.is_featured
+    if old_value == is_featured:
+        return locked
+    locked.is_featured = is_featured
+    locked.updated_by = actor
+    locked.version += 1
+    locked.save(update_fields=["is_featured", "updated_by", "version", "updated_at"])
+    audit_event(actor, "UPDATE", locked, old_values={"is_featured": old_value}, new_values={"is_featured": is_featured}, request=request)
+    return locked
+
+
+@transaction.atomic
+def set_property_publication(listing, actor, *, is_published, listing_version, request=None):
+    locked = Listing.all_objects.select_for_update().select_related("offering").get(pk=listing.pk)
+    if locked.version != listing_version:
+        raise Conflict()
+    if locked.is_published == is_published:
+        return locked
+    if is_published:
+        return publish_listing(locked, actor, request=request)
+    return unpublish_listing(locked, actor, request=request)
 
 
 def property_dependencies(listing):

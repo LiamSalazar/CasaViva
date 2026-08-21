@@ -8,7 +8,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
+from apps.common.throttling import FixedScopeThrottle
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from django.contrib.auth.models import Group, Permission
@@ -21,8 +21,12 @@ from .services import change_user_access, revoke_user_sessions
 from .security import has_recent_mfa
 
 
-class LoginThrottle(ScopedRateThrottle):
+class LoginThrottle(FixedScopeThrottle):
     scope = "login"
+
+
+class MfaThrottle(FixedScopeThrottle):
+    scope = "mfa"
 
 
 @ensure_csrf_cookie
@@ -44,7 +48,7 @@ def password_login(request):
 @extend_schema(request=OpenApiTypes.OBJECT, responses={200: OpenApiTypes.OBJECT})
 @api_view(["POST"])
 @permission_classes([AllowAny])
-@throttle_classes([LoginThrottle])
+@throttle_classes([MfaThrottle])
 def enroll_mfa(request):
     from .models import User
     user_id = request.session.get("preauth_user_id")
@@ -63,7 +67,7 @@ def enroll_mfa(request):
 @extend_schema(request=TotpSerializer, responses={200: OpenApiTypes.OBJECT})
 @api_view(["POST"])
 @permission_classes([AllowAny])
-@throttle_classes([LoginThrottle])
+@throttle_classes([MfaThrottle])
 def verify_mfa(request):
     from .models import User
     serializer = TotpSerializer(data=request.data)

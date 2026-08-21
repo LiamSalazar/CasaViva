@@ -36,11 +36,11 @@ docker compose -f "$test_compose" up -d --wait postgres-test
 export POSTGRES_TEST_USER=casaviva_migrator
 export POSTGRES_TEST_PASSWORD=casaviva-migrator-test
 "$backend_python" backend/manage.py migrate --noinput
-"$backend_python" backend/manage.py seed_system
-"$backend_python" backend/manage.py seed_system
-"$backend_python" backend/manage.py seed_reference_catalog
-"$backend_python" backend/manage.py seed_reference_catalog
 "$backend_python" backend/manage.py harden_database_roles
+"$backend_python" backend/manage.py seed_system
+"$backend_python" backend/manage.py seed_system
+"$backend_python" backend/manage.py seed_reference_catalog
+"$backend_python" backend/manage.py seed_reference_catalog
 "$backend_python" backend/manage.py makemigrations --check --dry-run
 
 cd "$repository_dir/backend"
@@ -75,6 +75,7 @@ npm run lint
 npm run typecheck
 npm run build
 npm audit --omit=dev
+"$backend_python" -m pip_audit -r backend/requirements/base.txt
 
 export POSTGRES_TEST_USER=casaviva_app
 export POSTGRES_TEST_PASSWORD=casaviva-app-test

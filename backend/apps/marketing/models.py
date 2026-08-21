@@ -11,6 +11,12 @@ class MarketingCampaign(BusinessModel):
     is_active = models.BooleanField(default=True)
     notes = models.TextField(null=True, blank=True)
 
+    class Meta:
+        permissions = [
+            ("view_campaigns", "Puede consultar campañas"),
+            ("manage_campaigns", "Puede administrar campañas"),
+        ]
+
 
 class MarketingSpend(UUIDTimeStampedModel):
     campaign = models.ForeignKey(MarketingCampaign, on_delete=models.PROTECT, related_name="spend")
@@ -20,3 +26,7 @@ class MarketingSpend(UUIDTimeStampedModel):
 
     class Meta:
         constraints = [models.CheckConstraint(condition=models.Q(amount__gte=0), name="marketing_spend_nonnegative")]
+        permissions = [
+            ("view_spend", "Puede consultar gasto de marketing"),
+            ("manage_spend", "Puede administrar gasto de marketing"),
+        ]

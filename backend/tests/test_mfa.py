@@ -4,6 +4,7 @@ from django_otp.plugins.otp_totp.models import TOTPDevice
 
 from apps.accounts.models import RecoveryCode, User
 from apps.accounts.security import has_recent_mfa
+from apps.accounts.views import LoginThrottle, MfaThrottle
 
 
 @pytest.mark.django_db
@@ -68,3 +69,8 @@ def test_recent_mfa_rejects_expired_value(rf):
         "mfa_verified_at": (timezone.now() - timezone.timedelta(minutes=16)).isoformat(),
     }
     assert has_recent_mfa(request) is False
+
+
+def test_password_and_mfa_attempts_use_independent_rate_limit_buckets(rf):
+    request = rf.post("/api/v1/auth/login/")
+    assert LoginThrottle().get_cache_key(request, None) != MfaThrottle().get_cache_key(request, None)

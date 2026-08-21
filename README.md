@@ -2,6 +2,64 @@
 
 CasaViva es una plataforma inmobiliaria modular con frontend editorial Next.js 16 y backend Django 6.1/DRF sobre PostgreSQL 18. La experiencia pública conserva el diseño original; los datos, la autenticación administrativa, el CRM, la auditoría, el tracking y BI provienen del backend.
 
+## Ejecutar CasaViva localmente
+
+Requisitos: Docker con Compose, Python 3.12+, Node.js 20+ y npm 10+.
+
+```bash
+cp .env.example .env
+# Cambia TODOS los valores CHANGE_ME antes del primer arranque.
+docker compose up -d postgres
+
+python3 -m venv backend/.venv
+source backend/.venv/bin/activate
+# Windows (PowerShell): backend\.venv\Scripts\Activate.ps1
+pip install -r backend/requirements/development.txt
+```
+
+Migra y aplica el hardening usando temporalmente `casaviva_migrator` y la misma contraseña local que configuraste en `.env`:
+
+```bash
+export DATABASE_URL='postgresql://casaviva_migrator:TU_PASSWORD_MIGRATOR@127.0.0.1:5432/casaviva'
+python backend/manage.py migrate
+python backend/manage.py harden_database_roles
+unset DATABASE_URL
+
+python backend/manage.py seed_system
+python backend/manage.py seed_reference_catalog
+python backend/manage.py bootstrap_founders
+python backend/manage.py runserver 127.0.0.1:8000
+```
+
+`unset DATABASE_URL` hace que Django vuelva a usar el `DATABASE_URL` de `.env`, que debe apuntar a `casaviva_app`. `bootstrap_founders` solicita las cuentas administrativas; no hay correos, contraseñas ni secretos TOTP versionados.
+
+En otra terminal:
+
+```bash
+npm install
+npm run dev
+```
+
+Abre el sitio en `http://localhost:3000` y la administración en `http://localhost:3000/administracion/acceso`. Para detener PostgreSQL usa `docker compose down`.
+
+PostgreSQL persiste sus datos en un volumen Docker, no en un archivo dentro del repositorio. Puedes comprobarlo con:
+
+```bash
+docker compose ps
+docker inspect "$(docker compose ps -q postgres)" \
+  --format '{{range .Mounts}}{{println .Name "->" .Destination}}{{end}}'
+```
+
+`docker compose down` conserva el volumen. **`docker compose down -v` elimina la base local**; no lo uses si deseas conservar sus datos.
+
+## Verificar el proyecto
+
+```bash
+./scripts/verify.sh
+```
+
+El script crea una PostgreSQL 18 de pruebas separada, ejecuta backend, frontend y E2E reales, y limpia sólo su infraestructura temporal. Nunca modifica la base normal de desarrollo.
+
 ## Arquitectura
 
 ```mermaid
@@ -22,38 +80,6 @@ flowchart TB
 
 El diagrama detallado está en [docs/architecture.md](docs/architecture.md). El ER con atributos y relaciones está en [docs/erd.md](docs/erd.md), y el diccionario de datos en [docs/database-model.md](docs/database-model.md).
 
-## Puesta en marcha
-
-Requisitos: Node.js 20+, npm 10+, Python 3.12+ y Docker Compose.
-
-```bash
-cp .env.example .env
-# Sustituye todos los valores CHANGE_ME.
-docker compose up -d postgres
-
-python3 -m venv backend/.venv
-backend/.venv/bin/pip install -r backend/requirements/development.txt
-
-# Para migrar usa temporalmente casaviva_migrator.
-export DATABASE_URL='postgresql://casaviva_migrator:TU_PASSWORD@127.0.0.1:5432/casaviva'
-backend/.venv/bin/python backend/manage.py migrate
-backend/.venv/bin/python backend/manage.py seed_system
-backend/.venv/bin/python backend/manage.py seed_reference_catalog
-backend/.venv/bin/python backend/manage.py bootstrap_founders
-
-# Para servir, cambia DATABASE_URL a casaviva_app.
-backend/.venv/bin/python backend/manage.py runserver
-```
-
-En otra terminal:
-
-```bash
-npm install
-npm run dev
-```
-
-Abre `http://localhost:3000`. La administración está en `http://localhost:3000/administracion/acceso`. No hay credenciales versionadas: `bootstrap_founders` solicita los datos de Liam, Ana y Alfredo o lee las variables documentadas en `.env.example`.
-
 ## Pruebas rápidas
 
 ```bash
@@ -68,7 +94,7 @@ npm run build
 
 Esta suite usa SQLite en memoria para retroalimentación rápida. No sustituye las pruebas de restricciones, concurrencia ni roles de PostgreSQL.
 
-## Verificación completa
+## Detalle de la verificación completa
 
 ```bash
 ./scripts/verify.sh

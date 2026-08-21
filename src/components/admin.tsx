@@ -1649,7 +1649,7 @@ function Select({
   return (
     <label className="field">
       <span>{label}</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)}>
+      <select aria-label={label} value={value} onChange={(e) => onChange(e.target.value)}>
         {options.map(([l, v]) => (
           <option value={v} key={v}>
             {l}

@@ -63,6 +63,9 @@ def test_business_and_editable_catalog_endpoints_round_trip(admin_client, catalo
     )
     assert renamed_type.status_code == 200
     assert renamed_type.data["name"] == "Dúplex residencial"
+    assert admin_client.delete(f"/api/v1/admin/property-types/{property_type.data['id']}/").status_code == 204
+    inactive = admin_client.get("/api/v1/admin/property-types/?is_active=false")
+    assert property_type.data["id"] in {str(item["id"]) for item in inactive.data["results"]}
 
     amenity = admin_client.post(
         "/api/v1/admin/amenities/",
@@ -196,7 +199,7 @@ def test_listing_history_media_archive_restore_and_export(admin_client, owner, c
     listing = catalog["listing"]
     now = timezone.now() + timedelta(minutes=1)
     price = admin_client.post(
-        f"/api/v1/admin/listings/{listing.id}/price/",
+        f"/api/v1/admin/properties/{listing.id}/price/",
         {
             "price_type": "RANGE",
             "amount_min": "1300000.00",
@@ -207,19 +210,19 @@ def test_listing_history_media_archive_restore_and_export(admin_client, owner, c
         format="json",
     )
     assert price.status_code == 201, price.data
-    history = admin_client.get(f"/api/v1/admin/listings/{listing.id}/price_history/")
+    history = admin_client.get(f"/api/v1/admin/properties/{listing.id}/price_history/")
     assert history.status_code == 200
     assert len(history.data) == 2
     assert PriceRecord.objects.filter(offering=listing.offering, effective_to__isnull=True).count() == 1
 
     availability = admin_client.post(
-        f"/api/v1/admin/listings/{listing.id}/availability/",
+        f"/api/v1/admin/properties/{listing.id}/availability/",
         {"status": "RESERVED", "notes": "Apartada por cliente"},
         format="json",
     )
     assert availability.status_code == 201
     availability_history = admin_client.get(
-        f"/api/v1/admin/listings/{listing.id}/availability_history/"
+        f"/api/v1/admin/properties/{listing.id}/availability_history/"
     )
     assert len(availability_history.data) == 2
     assert AvailabilityRecord.objects.filter(
@@ -235,13 +238,13 @@ def test_listing_history_media_archive_restore_and_export(admin_client, owner, c
         mime_type="image/jpeg", byte_size=11, sha256="2" * 64, uploaded_by=owner,
     )
     invalid_role = admin_client.post(
-        f"/api/v1/admin/listings/{listing.id}/media/",
+        f"/api/v1/admin/properties/{listing.id}/media/",
         {"media_id": str(first.id), "role": "INVALID"}, format="json",
     )
     assert invalid_role.status_code == 400
     for asset in (first, second):
         response = admin_client.post(
-            f"/api/v1/admin/listings/{listing.id}/media/",
+            f"/api/v1/admin/properties/{listing.id}/media/",
             {"media_id": str(asset.id), "role": "HERO"}, format="json",
         )
         assert response.status_code == 201
@@ -253,20 +256,20 @@ def test_listing_history_media_archive_restore_and_export(admin_client, owner, c
     assert exported["Content-Type"].startswith("text/csv")
     assert "Propiedades" not in exported.content.decode("utf-8")  # encabezados, no título decorativo
 
-    preview = admin_client.get(f"/api/v1/admin/listings/{listing.id}/delete-preview/")
+    preview = admin_client.get(f"/api/v1/admin/properties/{listing.id}/delete-preview/")
     assert preview.status_code == 200
     assert preview.data["can_delete"] is False
-    assert admin_client.delete(f"/api/v1/admin/listings/{listing.id}/").status_code == 204
+    assert admin_client.delete(f"/api/v1/admin/properties/{listing.id}/").status_code == 204
     listing.refresh_from_db()
     assert listing.archived_at is not None
     assert listing.is_published is False
-    restored = admin_client.post(f"/api/v1/admin/listings/{listing.id}/restore/", {}, format="json")
+    restored = admin_client.post(f"/api/v1/admin/properties/{listing.id}/restore/", {}, format="json")
     assert restored.status_code == 200
     listing.refresh_from_db()
     assert listing.archived_at is None
 
 
-def test_public_home_and_slug_redirect_use_real_http_responses(admin_client, client, catalog):
+def test_public_home_and_legacy_listing_mutation_is_blocked(admin_client, client, catalog):
     home = client.get("/api/v1/public/home/")
     assert home.status_code == 200
     assert home.data["featured_listings"][0]["slug"] == catalog["listing"].slug
@@ -277,7 +280,6 @@ def test_public_home_and_slug_redirect_use_real_http_responses(admin_client, cli
         {"slug": "casa-con-url-nueva", "version": listing.version},
         format="json",
     )
-    assert response.status_code == 200
-    redirect = client.get("/api/v1/redirect/propiedades/casa-modelo/")
-    assert redirect.status_code == 301
-    assert redirect["Location"] == "/propiedades/casa-con-url-nueva"
+    assert response.status_code == 405
+    listing.refresh_from_db()
+    assert listing.slug == "casa-modelo"

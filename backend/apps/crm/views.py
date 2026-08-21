@@ -1,22 +1,22 @@
 from django.db import transaction
 from django.utils import timezone
-from rest_framework import viewsets, status
+from rest_framework import mixins, viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
+from apps.common.throttling import FixedScopeThrottle
 from apps.accounts.permissions import HasRequiredPermission, IsMfaVerifiedAdmin
 from apps.common.exports import csv_response
 from apps.common.exceptions import Conflict
-from apps.common.services import archive_entity, restore_entity
+from apps.common.services import archive_entity, require_current_version, restore_entity
 from apps.audit.services import audit_event
 from .models import Inquiry, Lead, LeadStageHistory, Sale, Visit
 from .serializers import InquirySerializer, LeadSerializer, PublicInquirySerializer, SaleSerializer, VisitSerializer
-from .services import change_lead_stage, create_sale
+from .services import change_lead_stage, change_sale_status, create_sale
 from drf_spectacular.utils import extend_schema, OpenApiTypes
 
 
-class InquiryThrottle(ScopedRateThrottle): scope = "inquiry"
+class InquiryThrottle(FixedScopeThrottle): scope = "inquiry"
 
 @extend_schema(request=PublicInquirySerializer, responses={201: OpenApiTypes.OBJECT})
 @api_view(["POST"])
@@ -46,8 +46,7 @@ class LeadViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def update(self, request, *args, **kwargs):
         lead = Lead.all_objects.select_for_update().get(pk=self.get_object().pk)
-        if request.data.get("version") is None or int(request.data["version"]) != lead.version:
-            raise Conflict()
+        require_current_version(request.data.get("version"), lead.version)
         target_stage = request.data.get("status", lead.status)
         data = {key: value for key, value in request.data.items() if key not in ("status", "version")}
         if data:
@@ -74,7 +73,20 @@ class LeadViewSet(viewsets.ModelViewSet):
         rows = [[x.first_name, x.last_name or "", x.email or "", x.phone_raw or "", x.get_status_display(), x.created_at.isoformat()] for x in self.filter_queryset(self.get_queryset())]
         return csv_response("clientes.csv", ["Nombre", "Apellidos", "Correo", "Teléfono", "Estado", "Creado"], rows)
 
-class InquiryViewSet(viewsets.ModelViewSet):
+class CommercialHistoryViewSet(
+    mixins.CreateModelMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin, viewsets.GenericViewSet,
+):
+    def perform_create(self, serializer):
+        obj = serializer.save()
+        audit_event(self.request.user, "CREATE", obj, request=self.request)
+
+    def perform_update(self, serializer):
+        obj = serializer.save()
+        audit_event(self.request.user, "UPDATE", obj, request=self.request)
+
+
+class InquiryViewSet(CommercialHistoryViewSet):
     permission_classes = [IsMfaVerifiedAdmin, HasRequiredPermission]
     required_permission = "crm.manage_inquiries"
     queryset = Inquiry.objects.select_related("lead", "listing", "assigned_to").order_by("-created_at", "id")
@@ -87,17 +99,17 @@ class InquiryViewSet(viewsets.ModelViewSet):
         rows = [[str(x.id), str(x.lead), x.get_channel_display(), x.get_status_display(), x.listing.title if x.listing else "", x.created_at.isoformat()] for x in self.filter_queryset(self.get_queryset())]
         return csv_response("consultas.csv", ["Identificador", "Cliente", "Canal", "Estado", "Propiedad", "Creada"], rows)
 
-class VisitViewSet(viewsets.ModelViewSet):
+class VisitViewSet(CommercialHistoryViewSet):
     permission_classes = [IsMfaVerifiedAdmin, HasRequiredPermission]
     required_permission = "crm.manage_visits"
-    queryset = Visit.objects.select_related("lead", "offering", "assigned_to")
+    queryset = Visit.objects.select_related("lead", "offering", "assigned_to").order_by("-scheduled_at", "id")
     serializer_class = VisitSerializer
     filterset_fields = ["status", "assigned_to"]
 
-class SaleViewSet(viewsets.ModelViewSet):
+class SaleViewSet(CommercialHistoryViewSet):
     permission_classes = [IsMfaVerifiedAdmin, HasRequiredPermission]
     required_permission = "crm.manage_sales"
-    queryset = Sale.objects.select_related("lead", "offering", "listing")
+    queryset = Sale.objects.select_related("lead", "offering", "listing").order_by("-closed_at", "id")
     serializer_class = SaleSerializer
     filterset_fields = ["status", "closed_at"]
 
@@ -110,7 +122,10 @@ class SaleViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         if set(request.data) - {"status"}:
             return Response({"detail": "Después del cierre sólo puede cambiarse el estado de la venta."}, status=400)
-        return super().update(request, *args, **kwargs)
+        serializer = self.get_serializer(self.get_object(), data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        sale = change_sale_status(serializer.instance, serializer.validated_data.get("status", serializer.instance.status), request.user, request=request)
+        return Response(self.get_serializer(sale).data)
 
     @action(detail=False, methods=["get"])
     def export(self, request):

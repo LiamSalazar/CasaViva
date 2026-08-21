@@ -4,6 +4,8 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from apps.accounts.models import User
 from django.contrib.auth.models import Group
+from django.contrib.auth.models import Permission
+from apps.marketing.models import MarketingCampaign
 
 
 def verified_client(user):
@@ -30,9 +32,15 @@ def test_anonymous_cannot_access_admin(client):
 @pytest.mark.django_db
 def test_optimistic_lock_returns_409(admin_client, catalog):
     listing = catalog["listing"]
-    first = admin_client.patch(f"/api/v1/admin/listings/{listing.id}/", {"title": "Cambio Ana", "version": 1}, format="json")
+    first = admin_client.post(
+        f"/api/v1/admin/properties/{listing.id}/featured/",
+        {"is_featured": True, "listing_version": listing.version}, format="json",
+    )
     assert first.status_code == 200
-    stale = admin_client.patch(f"/api/v1/admin/listings/{listing.id}/", {"title": "Cambio Alfredo", "version": 1}, format="json")
+    stale = admin_client.post(
+        f"/api/v1/admin/properties/{listing.id}/featured/",
+        {"is_featured": False, "listing_version": listing.version}, format="json",
+    )
     assert stale.status_code == 409
 
 
@@ -47,8 +55,17 @@ def test_founder_permission_matrix_for_sensitive_business_actions(catalog, first
     assert client.post("/api/v1/admin/property-types/", {"code": f"duplex-{first_name.lower()}", "name": "Dúplex", "is_active": True, "sort_order": 10}, format="json").status_code == 201
     assert client.get("/api/v1/admin/bi/overview/").status_code == 200
     assert client.get("/api/v1/admin/audit/").status_code == 200
-    assert client.post(f"/api/v1/admin/listings/{catalog['listing'].id}/unpublish/", {}, format="json").status_code == 200
-    assert client.post(f"/api/v1/admin/listings/{catalog['listing'].id}/publish/", {}, format="json").status_code == 200
+    listing = catalog["listing"]
+    unpublished = client.post(
+        f"/api/v1/admin/properties/{listing.id}/publication/",
+        {"is_published": False, "listing_version": listing.version}, format="json",
+    )
+    assert unpublished.status_code == 200, unpublished.data
+    published = client.post(
+        f"/api/v1/admin/properties/{listing.id}/publication/",
+        {"is_published": True, "listing_version": unpublished.data["version"]}, format="json",
+    )
+    assert published.status_code == 200, published.data
 
     forbidden_user = User.objects.create_user(email=f"future-{email}", password="A-secure-test-password!", first_name="Future")
     assert client.post("/api/v1/admin/users/", {}, format="json").status_code == 403
@@ -81,3 +98,47 @@ def test_owner_access_change_invalidates_target_session(owner):
     )
     assert response.status_code == 200, response.data
     assert target_client.get("/api/v1/admin/listings/").status_code in (401, 403)
+
+
+@pytest.mark.django_db
+def test_bi_analyst_can_read_but_cannot_mutate_marketing(owner):
+    call_command("seed_system")
+    analyst = User.objects.create_user(email="analyst@example.test", password="A-secure-test-password!", first_name="Analyst")
+    analyst.user_permissions.add(Permission.objects.get(content_type__app_label="analytics", codename="view_bi"))
+    client = verified_client(analyst)
+    campaign = MarketingCampaign.objects.create(name="Lectura", utm_campaign="lectura", channel="Social", start_date=timezone.now().date())
+    assert client.get("/api/v1/admin/bi/overview/").status_code == 200
+    assert client.get("/api/v1/admin/marketing-campaigns/").status_code == 200
+    assert client.post("/api/v1/admin/marketing-campaigns/", {"name": "No", "utm_campaign": "no", "channel": "Social", "start_date": timezone.now().date()}, format="json").status_code == 403
+    assert client.patch(f"/api/v1/admin/marketing-campaigns/{campaign.id}/", {"name": "No"}, format="json").status_code == 403
+    assert client.delete(f"/api/v1/admin/marketing-campaigns/{campaign.id}/").status_code == 403
+
+
+@pytest.mark.django_db
+def test_founder_deactivates_campaign_instead_of_deleting_history(catalog):
+    call_command("seed_system")
+    founder = User.objects.create_user(email="marketing@example.test", password="A-secure-test-password!", first_name="Marketing")
+    founder.groups.add(Group.objects.get(name="Founder Admin"))
+    client = verified_client(founder)
+    campaign = MarketingCampaign.objects.create(name="Histórica", utm_campaign="historica", channel="Social", start_date=timezone.now().date())
+    assert client.delete(f"/api/v1/admin/marketing-campaigns/{campaign.id}/").status_code == 204
+    campaign.refresh_from_db()
+    assert campaign.is_active is False and campaign.archived_at is not None
+
+
+@pytest.mark.django_db
+def test_legacy_listing_endpoint_cannot_bypass_property_lifecycle(admin_client, catalog):
+    listing = catalog["listing"]
+    assert admin_client.patch(f"/api/v1/admin/listings/{listing.id}/", {"title": "Bypass", "version": listing.version}, format="json").status_code == 405
+    assert admin_client.delete(f"/api/v1/admin/listings/{listing.id}/").status_code == 405
+    assert admin_client.post(f"/api/v1/admin/listings/{listing.id}/unpublish/", {}, format="json").status_code in (404, 405)
+    listing.refresh_from_db()
+    assert listing.title == "Casa Modelo" and listing.is_published is True
+    offering = catalog["offering"]
+    bypass = admin_client.patch(
+        f"/api/v1/admin/offerings/{offering.id}/",
+        {"internal_notes": "Bypass", "version": offering.version}, format="json",
+    )
+    assert bypass.status_code == 400
+    offering.refresh_from_db()
+    assert offering.internal_notes is None

@@ -162,6 +162,9 @@ export interface Inquiry {
   message: string;
   source: "property" | "contact" | "visit";
   propertyId?: string;
+  listingSlug?: string;
+  sessionId?: string;
+  visitorId?: string;
   subject?: string;
   status: "new" | "viewed" | "attended";
 }

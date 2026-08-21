@@ -31,12 +31,14 @@ def _effective_datetime(value, field="effective_from"):
 
 
 @transaction.atomic
-def change_price(offering, actor, *, price_type, amount_min=None, amount_max=None, effective_from=None, source_record=None, observations=None, request=None):
+def change_price(offering, actor, *, price_type, amount_min=None, amount_max=None, currency=PriceRecord.Currency.MXN, effective_from=None, source_record=None, observations=None, request=None):
     if not actor.has_perm("catalog.manage_offerings"):
         raise PermissionDenied()
     locked = type(offering).all_objects.select_for_update().get(pk=offering.pk)
     if price_type not in PriceRecord.Type.values:
         raise ValidationError({"price_type": "Selecciona un tipo de precio válido."})
+    if currency not in PriceRecord.Currency.values:
+        raise ValidationError({"currency": "CasaViva registra precios en MXN."})
     amount_min = _decimal(amount_min, "amount_min")
     amount_max = _decimal(amount_max, "amount_max")
     if price_type == PriceRecord.Type.ON_REQUEST and (amount_min is not None or amount_max is not None):
@@ -58,8 +60,8 @@ def change_price(offering, actor, *, price_type, amount_min=None, amount_max=Non
             raise ValidationError({"effective_from": "La nueva fecha debe ser posterior al precio vigente."})
         current.effective_to = now
         current.save(update_fields=["effective_to", "updated_at"])
-    record = PriceRecord.objects.create(offering=locked, price_type=price_type, amount_min=amount_min, amount_max=amount_max, effective_from=now, source_record=source_record, observations=observations, created_by=actor)
-    audit_event(actor, "PRICE_CHANGE", locked, old_values={"price": str(current.amount_min) if current else None}, new_values={"price": str(amount_min) if amount_min is not None else None, "type": price_type}, request=request)
+    record = PriceRecord.objects.create(offering=locked, price_type=price_type, amount_min=amount_min, amount_max=amount_max, currency=currency, effective_from=now, source_record=source_record, observations=observations, created_by=actor)
+    audit_event(actor, "PRICE_CHANGE", locked, old_values={"price": str(current.amount_min) if current else None, "currency": current.currency if current else None}, new_values={"price": str(amount_min) if amount_min is not None else None, "type": price_type, "currency": currency}, request=request)
     return record
 
 

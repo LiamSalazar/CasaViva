@@ -1,4 +1,5 @@
 import pytest
+from django.test import override_settings
 from django.utils import timezone
 from datetime import timedelta
 from apps.analytics.models import AnalyticsEvent, AnonymousVisitor, WebSession
@@ -16,6 +17,51 @@ def test_analytics_rejects_unknown_and_invalid_payload(client):
     assert client.post("/api/v1/public/analytics/events/", {**base, "event_name": "page_viewed", "page_path": "/"}, content_type="application/json").status_code == 201
     assert client.post("/api/v1/public/analytics/events/", {**base, "event_name": "page_viewed", "schema_version": 99}, content_type="application/json").status_code == 400
     assert client.post("/api/v1/public/analytics/events/", {**base, "event_name": "page_viewed", "properties": {"large": "x" * 17000}}, content_type="application/json").status_code == 400
+
+
+@pytest.mark.django_db
+def test_start_session_validates_uuid_lengths_enums_and_required_types(client):
+    valid = client.post(
+        "/api/v1/public/analytics/session/",
+        {"landing_path": "/?utm_campaign=agosto", "utm_source": "instagram", "utm_medium": "paid_social", "utm_campaign": "agosto", "utm_content": "reel_04", "device_category": "mobile", "consent_state": "ESSENTIAL"},
+        format="json",
+    )
+    assert valid.status_code == 201, valid.data
+    visitor_id = valid.data["visitor_id"]
+    assert client.post("/api/v1/public/analytics/session/", {"visitor_id": "not-a-uuid", "landing_path": "/", "consent_state": "ESSENTIAL"}, format="json").status_code == 400
+    assert client.post("/api/v1/public/analytics/session/", {"visitor_id": visitor_id, "landing_path": "/", "utm_source": "x" * 121, "consent_state": "ESSENTIAL"}, format="json").status_code == 400
+    assert client.post("/api/v1/public/analytics/session/", {"visitor_id": visitor_id, "landing_path": "/", "device_category": "watch", "consent_state": "ESSENTIAL"}, format="json").status_code == 400
+    assert client.post("/api/v1/public/analytics/session/", {"visitor_id": visitor_id, "landing_path": "/", "consent_state": "UNKNOWN"}, format="json").status_code == 400
+    assert client.post("/api/v1/public/analytics/session/", {"visitor_id": str(visitor_id), "landing_path": []}, content_type="application/json").status_code == 400
+
+
+@pytest.mark.django_db
+def test_admin_can_read_session_attribution(admin_client):
+    now = timezone.now()
+    visitor = AnonymousVisitor.objects.create(first_seen_at=now, last_seen_at=now)
+    lead = Lead.objects.create(first_name="Atribución")
+    session = WebSession.objects.create(
+        visitor=visitor, lead=lead, started_at=now, last_seen_at=now,
+        landing_path="/?utm_campaign=tecamac", consent_state="ESSENTIAL",
+        utm_source="instagram", utm_campaign="tecamac",
+    )
+    response = admin_client.get(f"/api/v1/admin/bi/sessions/{session.id}/")
+    assert response.status_code == 200
+    assert response.data["lead_id"] == lead.id
+    assert response.data["utm_campaign"] == "tecamac"
+
+
+@pytest.mark.django_db
+def test_start_session_is_throttled(client, monkeypatch):
+    from django.core.cache import cache
+    from apps.analytics.views import AnalyticsThrottle
+
+    cache.clear()
+    monkeypatch.setattr(AnalyticsThrottle, "THROTTLE_RATES", {"analytics": "1/min"})
+    first = client.post("/api/v1/public/analytics/session/", {"landing_path": "/", "consent_state": "ESSENTIAL"}, format="json")
+    second = client.post("/api/v1/public/analytics/session/", {"landing_path": "/", "consent_state": "ESSENTIAL"}, format="json")
+    assert first.status_code == 201
+    assert second.status_code == 429
 
 
 @pytest.mark.django_db
@@ -133,3 +179,7 @@ def test_bi_detail_endpoints_calculate_search_marketing_sales_and_decisions(admi
     assert marketing.data[0]["cost_per_inquiry"] == 1000
     assert sales.data["totals"]["sales"] == 1
     assert decisions.data["pending_leads"] == 1
+    assert listings.data[0]["favorites"] == 0
+    assert listings.data[0]["visits_count"] == 1
+    assert listings.data[0]["inquiry_to_visit_rate"] == 100.0
+    assert listings.data[0]["visit_to_sale_rate"] == 100.0

@@ -29,6 +29,8 @@ class Command(BaseCommand):
             ("liam@example.test", "Liam", True, owner),
             ("ana@example.test", "Ana", False, founder),
             ("alfredo@example.test", "Alfredo", False, founder),
+            ("attribution@example.test", "Atribución", False, founder),
+            ("catalog@example.test", "Catálogo", False, founder),
         ]
         for email, first_name, is_owner, group in fixtures:
             user, _ = User.objects.get_or_create(email=email, defaults={"first_name": first_name})

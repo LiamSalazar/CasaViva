@@ -12,7 +12,9 @@ BUSINESS_PERMISSIONS = [
     "listings.unpublish_listing", "listings.archive_listing", "listings.restore_listing",
     "listings.hard_delete_listing", "crm.manage_leads", "crm.manage_inquiries",
     "crm.manage_visits", "crm.manage_sales", "content.manage_content",
-    "analytics.view_bi", "audit.view_audit", "audit.hard_delete_business_record",
+    "analytics.view_bi", "marketing.view_campaigns", "marketing.manage_campaigns",
+    "marketing.view_spend", "marketing.manage_spend",
+    "audit.view_audit", "audit.hard_delete_business_record",
 ]
 SECURITY_PERMISSIONS = ["accounts.manage_users", "accounts.manage_roles", "accounts.manage_permissions"]
 

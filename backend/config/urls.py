@@ -124,6 +124,7 @@ urlpatterns = [
     path("api/v1/redirect/<path:path>/", listing_views.slug_redirect),
     path("api/v1/public/", include(public_router.urls)),
     path("api/v1/admin/bi/overview/", analytics_views.bi_overview),
+    path("api/v1/admin/bi/sessions/<uuid:session_id>/", analytics_views.session_attribution),
     path("api/v1/admin/bi/listings/", analytics_views.bi_listing_performance),
     path("api/v1/admin/bi/searches/", analytics_views.bi_search_demand),
     path("api/v1/admin/bi/marketing/", analytics_views.bi_marketing),

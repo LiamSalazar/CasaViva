@@ -1,6 +1,19 @@
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
+
+from apps.common.exceptions import Conflict
+
+
+def require_current_version(value, current):
+    try:
+        expected = int(value)
+    except (TypeError, ValueError):
+        raise ValidationError({"version": "Incluye una versión válida."})
+    if expected != current:
+        raise Conflict()
+    return expected
+from rest_framework.exceptions import ValidationError
 from apps.audit.services import audit_event
 
 

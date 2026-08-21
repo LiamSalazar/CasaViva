@@ -35,7 +35,7 @@ def test_public_inquiry_deduplicates_exact_email(client, catalog):
 @pytest.mark.django_db
 def test_hard_delete_unknown_listing_returns_404(admin_client):
     response = admin_client.post(
-        "/api/v1/admin/listings/00000000-0000-0000-0000-000000000000/hard-delete/",
+        "/api/v1/admin/properties/00000000-0000-0000-0000-000000000000/hard-delete/",
         {"confirmation": "Inexistente", "reason": "Prueba"},
         format="json",
     )

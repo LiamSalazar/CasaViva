@@ -28,6 +28,7 @@ import {
 import { FavoriteButton, ShareButton, useToast } from "@/components/ui";
 import { trackEvent } from "@/components/analytics-provider";
 import { inquiryService, useCasaViva } from "@/services";
+import { getAnalyticsIdentity } from "@/services/analytics-session";
 
 export const DynamicMapView = dynamic(
   () => import("./map-view").then((m) => m.MapView),
@@ -413,6 +414,7 @@ export function PropertyContactCard({ property }: { property: Property }) {
     data: InquiryForm,
     source: "property" | "visit" = "property",
   ) => {
+    const analyticsIdentity = getAnalyticsIdentity();
     const item: Inquiry = {
       id: uid("inq"),
       createdAt: new Date().toISOString(),
@@ -422,6 +424,9 @@ export function PropertyContactCard({ property }: { property: Property }) {
       message: data.message,
       source,
       propertyId: property.id,
+      listingSlug: property.slug,
+      sessionId: analyticsIdentity.sessionId,
+      visitorId: analyticsIdentity.visitorId,
       status: "new",
     };
     try {

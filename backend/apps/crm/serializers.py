@@ -12,6 +12,7 @@ class PublicInquirySerializer(serializers.Serializer):
     message = serializers.CharField(max_length=4000, required=False, allow_blank=True)
     listing_slug = serializers.SlugField(required=False, allow_blank=True)
     session_id = serializers.UUIDField(required=False, allow_null=True)
+    visitor_id = serializers.UUIDField(required=False, allow_null=True)
     privacy_consent = serializers.BooleanField()
     privacy_notice_version = serializers.PrimaryKeyRelatedField(queryset=PrivacyNoticeVersion.objects.filter(is_active=True), required=False)
 
@@ -24,12 +25,18 @@ class PublicInquirySerializer(serializers.Serializer):
         if not notice:
             raise serializers.ValidationError({"privacy_consent": "El aviso de privacidad no está disponible temporalmente."})
         attrs["privacy_notice_version"] = notice
+        if attrs.get("session_id") and not attrs.get("visitor_id"):
+            raise serializers.ValidationError({"visitor_id": "Incluye el visitante asociado a la sesión."})
+        if attrs.get("visitor_id") and not attrs.get("session_id"):
+            raise serializers.ValidationError({"session_id": "Incluye la sesión de navegación."})
         return attrs
 
     def create(self, data):
         slug = data.pop("listing_slug", None)
         data.pop("privacy_consent", None)
         listing = Listing.objects.filter(slug=slug, is_published=True).first() if slug else None
+        if slug and listing is None:
+            raise serializers.ValidationError({"listing_slug": "La propiedad indicada no está disponible."})
         return create_inquiry(listing=listing, **data)
 
 

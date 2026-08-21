@@ -9,6 +9,8 @@ type BiData = {
   current: Record<string, number>; previous: Record<string, number>;
   traffic: Array<{ date: string; sessions: number; visitors: number }>;
   funnel: Array<{ label: string; value: number }>;
+  funnel_description?: string;
+  lead_cohort?: { leads: number; with_visit: number; with_closed_sale: number };
   inventory: Record<string, number>;
 };
 
@@ -28,7 +30,7 @@ export function AdminBiPage() {
     <div className="metric-grid">{data && Object.entries(labels).map(([key, label]) => <div className="metric-card" key={key}><span>{label}</span><strong>{data.current[key] || 0}</strong><small>Periodo anterior: {data.previous[key] || 0}</small></div>)}</div>
     <div className="admin-panels">
       <section className="admin-panel"><h3>Tráfico en el tiempo</h3><div className="bi-bars" aria-label="Sesiones por día">{data?.traffic.map((x) => <div key={x.date} title={`${x.date}: ${x.sessions} sesiones`}><span style={{ height: `${Math.max(3, x.sessions / maxTraffic * 100)}%` }} /><small>{new Date(x.date).getDate()}</small></div>)}</div></section>
-      <section className="admin-panel"><h3>Embudo comercial</h3><div className="bi-funnel">{data?.funnel.map((x, i) => { const previous = i ? data.funnel[i - 1].value : x.value; const conversion = previous ? Math.round(x.value / previous * 100) : 0; return <div key={x.label}><span>{x.label}</span><strong>{x.value}</strong>{i > 0 && <small>{conversion}% desde la etapa anterior</small>}</div>; })}</div></section>
+      <section className="admin-panel"><h3>Actividad por etapa</h3><p className="muted">{data?.funnel_description}</p><div className="bi-funnel">{data?.funnel.map((x) => <div key={x.label}><span>{x.label}</span><strong>{x.value}</strong></div>)}</div>{data?.lead_cohort && <><h3>Cohorte de clientes del periodo</h3><div className="inventory-line"><span>Clientes creados <strong>{data.lead_cohort.leads}</strong></span><span>Con visita <strong>{data.lead_cohort.with_visit}</strong></span><span>Con venta cerrada <strong>{data.lead_cohort.with_closed_sale}</strong></span></div></>}</section>
     </div>
     <section className="admin-panel"><h3>Inventario</h3><div className="inventory-line"><span>Registradas <strong>{data?.inventory.registered || 0}</strong></span><span>Publicadas <strong>{data?.inventory.published || 0}</strong></span><span>No publicadas <strong>{data?.inventory.unpublished || 0}</strong></span><span>Archivadas <strong>{data?.inventory.archived || 0}</strong></span></div></section>
     <ListingPerformance days={days} />
@@ -42,7 +44,7 @@ export function AdminBiPage() {
 function ListingPerformance({ days }: { days: number }) {
   const [rows, setRows] = useState<Array<any>>([]);
   useEffect(() => { apiFetch<Array<any>>(`/api/v1/admin/bi/listings/?days=${days}`).then(setRows).catch(() => setRows([])); }, [days]);
-  return <section className="admin-panel bi-table"><h3>Resultados por propiedad</h3><AdminTable heads={["Propiedad", "Visualizaciones", "Consultas", "Ventas", "Conversión a consulta"]}>{rows.map((x) => <tr key={x.id}><td>{x.title}</td><td>{x.views}</td><td>{x.inquiries_count}</td><td>{x.sales_count}</td><td>{x.views ? `${Math.round(x.inquiries_count / x.views * 100)}%` : "—"}</td></tr>)}</AdminTable></section>;
+  return <section className="admin-panel bi-table"><h3>Resultados por propiedad</h3><AdminTable heads={["Propiedad", "Visualizaciones", "Favoritos", "Consultas", "Visitas", "Ventas", "Vista → consulta", "Consulta → visita", "Visita → venta"]}>{rows.map((x) => <tr key={x.id}><td>{x.title}</td><td>{x.views}</td><td>{x.favorites}</td><td>{x.inquiries_count}</td><td>{x.visits_count}</td><td>{x.sales_count}</td><td>{x.view_to_inquiry_rate == null ? "—" : `${Math.round(x.view_to_inquiry_rate)}%`}</td><td>{x.inquiry_to_visit_rate == null ? "—" : `${Math.round(x.inquiry_to_visit_rate)}%`}</td><td>{x.visit_to_sale_rate == null ? "—" : `${Math.round(x.visit_to_sale_rate)}%`}</td></tr>)}</AdminTable></section>;
 }
 
 const resources: Record<string, { title: string; endpoint: string; exportable?: boolean; heads: string[]; row: (x: any) => React.ReactNode[] }> = {

@@ -13,11 +13,14 @@ class PriceRecord(UUIDTimeStampedModel):
         RANGE = "RANGE", "Rango"
         ON_REQUEST = "ON_REQUEST", "Precio a consultar"
 
+    class Currency(models.TextChoices):
+        MXN = "MXN", "Peso mexicano"
+
     offering = models.ForeignKey(PropertyOffering, on_delete=models.PROTECT, related_name="prices")
     price_type = models.CharField(max_length=15, choices=Type.choices)
     amount_min = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     amount_max = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
-    currency = models.CharField(max_length=3, default="MXN")
+    currency = models.CharField(max_length=3, choices=Currency.choices, default=Currency.MXN)
     effective_from = models.DateTimeField()
     effective_to = models.DateTimeField(null=True, blank=True)
     source_record = models.ForeignKey(SourceRecord, null=True, blank=True, on_delete=models.SET_NULL)
@@ -28,6 +31,7 @@ class PriceRecord(UUIDTimeStampedModel):
         constraints = [
             models.UniqueConstraint(fields=["offering"], condition=Q(effective_to__isnull=True), name="one_current_price_per_offering"),
             models.CheckConstraint(condition=Q(price_type__in=["FIXED", "FROM", "RANGE", "ON_REQUEST"]), name="price_type_valid"),
+            models.CheckConstraint(condition=Q(currency="MXN"), name="price_currency_mxn"),
             models.CheckConstraint(condition=Q(amount_min__gte=0) | Q(amount_min__isnull=True), name="price_min_nonnegative"),
             models.CheckConstraint(condition=Q(amount_max__gte=0) | Q(amount_max__isnull=True), name="price_max_nonnegative"),
             models.CheckConstraint(condition=Q(amount_max__gte=models.F("amount_min")) | Q(amount_max__isnull=True) | Q(amount_min__isnull=True), name="price_range_valid"),

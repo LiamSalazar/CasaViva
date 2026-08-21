@@ -128,7 +128,7 @@ REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "EXCEPTION_HANDLER": "apps.common.exceptions.api_exception_handler",
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.AnonRateThrottle", "rest_framework.throttling.UserRateThrottle"],
-    "DEFAULT_THROTTLE_RATES": {"anon": "120/min", "user": "600/min", "login": "8/min", "inquiry": "10/hour", "analytics": "300/min", "search": "120/min"},
+    "DEFAULT_THROTTLE_RATES": {"anon": "120/min", "user": "600/min", "login": "8/min", "mfa": "8/min", "inquiry": "10/hour", "analytics": "300/min", "search": "120/min"},
 }
 SPECTACULAR_SETTINGS = {"TITLE": "CasaViva API", "VERSION": "1.0.0", "SERVE_INCLUDE_SCHEMA": False}
 

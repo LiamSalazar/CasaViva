@@ -188,7 +188,12 @@ class PropertyOffering(BusinessModel):
         constraints = [
             models.CheckConstraint(condition=(models.Q(source_type="DEVELOPER", development_model__isnull=False) | models.Q(source_type="PRIVATE", development_model__isnull=True)), name="offering_source_requires_relation"),
             models.CheckConstraint(condition=models.Q(bedrooms_min__gte=0) | models.Q(bedrooms_min__isnull=True), name="offering_bedrooms_nonnegative"),
+            models.CheckConstraint(condition=models.Q(bedrooms_max__gte=0) | models.Q(bedrooms_max__isnull=True), name="offering_bedrooms_max_nonnegative"),
             models.CheckConstraint(condition=models.Q(bathrooms_total__gte=0) | models.Q(bathrooms_total__isnull=True), name="offering_bathrooms_nonnegative"),
+            models.CheckConstraint(condition=models.Q(parking_min__gte=0) | models.Q(parking_min__isnull=True), name="offering_parking_min_nonnegative"),
+            models.CheckConstraint(condition=models.Q(parking_max__gte=0) | models.Q(parking_max__isnull=True), name="offering_parking_max_nonnegative"),
+            models.CheckConstraint(condition=models.Q(levels_min__gte=0) | models.Q(levels_min__isnull=True), name="offering_levels_min_nonnegative"),
+            models.CheckConstraint(condition=models.Q(levels_max__gte=0) | models.Q(levels_max__isnull=True), name="offering_levels_max_nonnegative"),
             models.CheckConstraint(condition=models.Q(default_commission_rate__gte=0) | models.Q(default_commission_rate__isnull=True), name="offering_commission_nonnegative"),
             models.CheckConstraint(condition=models.Q(default_commission_rate__lte=100) | models.Q(default_commission_rate__isnull=True), name="offering_commission_max_100"),
             models.CheckConstraint(condition=models.Q(latitude__range=(-90, 90)) | models.Q(latitude__isnull=True), name="offering_latitude_valid"),

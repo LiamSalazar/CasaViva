@@ -20,7 +20,7 @@ class PropertyPriceInputSerializer(serializers.Serializer):
     price_type = serializers.ChoiceField(choices=PriceRecord.Type.choices)
     amount_min = serializers.DecimalField(max_digits=14, decimal_places=2, required=False, allow_null=True)
     amount_max = serializers.DecimalField(max_digits=14, decimal_places=2, required=False, allow_null=True)
-    currency = serializers.CharField(max_length=3, default="MXN")
+    currency = serializers.ChoiceField(choices=PriceRecord.Currency.choices, default=PriceRecord.Currency.MXN)
     effective_from = serializers.DateTimeField(required=False)
     observations = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
@@ -50,6 +50,21 @@ class PropertyMediaInputSerializer(serializers.Serializer):
     media_id = serializers.PrimaryKeyRelatedField(source="media", queryset=MediaAsset.objects.all())
     role = serializers.ChoiceField(choices=ListingMedia.Role.choices, default=ListingMedia.Role.GALLERY)
     sort_order = serializers.IntegerField(min_value=0, default=0)
+
+
+class PropertyFeaturedInputSerializer(serializers.Serializer):
+    is_featured = serializers.BooleanField()
+    listing_version = serializers.IntegerField(min_value=1)
+
+
+class PropertyPublicationInputSerializer(serializers.Serializer):
+    is_published = serializers.BooleanField()
+    listing_version = serializers.IntegerField(min_value=1)
+
+
+class PropertyHardDeleteInputSerializer(serializers.Serializer):
+    confirmation = serializers.CharField(max_length=300, trim_whitespace=False)
+    reason = serializers.CharField(min_length=3, max_length=1000)
 
 
 class AdminPropertyAggregateInputSerializer(serializers.Serializer):

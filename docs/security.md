@@ -29,3 +29,5 @@ Las operaciones de usuarios, permisos, hard delete y reset MFA usan el helper ce
 - `casaviva_backup`: `SELECT` de tablas/secuencias, suficiente para `pg_dump`, sin escritura.
 
 La suite PostgreSQL se conecta como cada rol real y comprueba permisos positivos y negativos, flags de clúster, inmutabilidad de auditoría y un `pg_dump` real. Estos controles no se simulan con mocks.
+
+El hardening se ejecuta obligatoriamente después de cada `migrate` y antes de seeds o tráfico. Los permisos de marketing separan lectura de BI/marketing de la administración de campañas y gasto; Founder Admin y Owner conservan gestión, mientras un analista con sólo `analytics.view_bi` no puede escribir. Inquiry, Visit y Sale no exponen DELETE CRUD ordinario. Las ventas cambian entre `CLOSED` y `CANCELLED` mediante un servicio transaccional auditado que mantiene la etapa del lead coherente.

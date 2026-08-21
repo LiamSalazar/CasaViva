@@ -5,7 +5,7 @@ from .serializers import GuideSerializer, HomeContentSerializer, LocationContent
 from apps.accounts.permissions import HasRequiredPermission, IsMfaVerifiedAdmin
 from apps.audit.services import audit_event
 from apps.common.exceptions import Conflict
-from apps.common.services import archive_entity, restore_entity
+from apps.common.services import archive_entity, require_current_version, restore_entity
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -24,8 +24,7 @@ class ContentBusinessViewSet(viewsets.ModelViewSet):
         audit_event(self.request.user, "CREATE", obj, request=self.request)
 
     def perform_update(self, serializer):
-        if int(self.request.data.get("version", -1)) != serializer.instance.version:
-            raise Conflict()
+        require_current_version(self.request.data.get("version"), serializer.instance.version)
         obj = serializer.save(updated_by=self.request.user, version=serializer.instance.version + 1)
         audit_event(self.request.user, "UPDATE", obj, request=self.request)
 

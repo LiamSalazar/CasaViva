@@ -101,7 +101,7 @@ export const useCasaVivaStore = create<CasaVivaState>()(
         set({ guides: await api.guides() });
       },
       deleteGuide: async (id) => { await apiFetch(`/api/v1/admin/guides/${id}/`, { method: "DELETE" }); set((s) => ({ guides: s.guides.filter((x) => x.id !== id) })); },
-      addInquiry: async (item) => { await apiFetch("/api/v1/public/inquiries/", { method: "POST", body: JSON.stringify({ first_name: item.name, email: item.email, phone: item.phone, message: item.message, listing_slug: get().properties.find((x) => x.id === item.propertyId)?.slug, privacy_consent: true }) }); },
+      addInquiry: async (item) => { await apiFetch("/api/v1/public/inquiries/", { method: "POST", body: JSON.stringify({ first_name: item.name, email: item.email, phone: item.phone, message: item.message, listing_slug: item.listingSlug, session_id: item.sessionId, visitor_id: item.visitorId, privacy_consent: true }) }); },
       setInquiryStatus: async (id, status) => { await apiFetch(`/api/v1/admin/inquiries/${id}/`, { method: "PATCH", body: JSON.stringify({ status: status.toUpperCase() }) }); await get().refreshAdmin(); },
       setHomeContent: async (item) => {
         const records = await apiFetch<{ results: Array<{ id: string; version: number }> }>("/api/v1/admin/content/?page_size=10");
@@ -111,7 +111,7 @@ export const useCasaVivaStore = create<CasaVivaState>()(
         const featuredListings = new Set([...item.featuredPropertyIds, ...item.heroSlides.filter((x) => x.active).map((x) => x.propertyId)]);
         for (const listing of get().properties) {
           const featured = featuredListings.has(listing.id);
-          if (listing.featured !== featured) await apiFetch(`/api/v1/admin/listings/${listing.id}/`, { method: "PATCH", body: JSON.stringify({ is_featured: featured, version: listing.version }) });
+          if (listing.featured !== featured) await apiFetch(`/api/v1/admin/properties/${listing.id}/featured/`, { method: "POST", body: JSON.stringify({ is_featured: featured, listing_version: listing.version }) });
         }
         for (const development of get().developments) {
           const featured = item.featuredDevelopmentIds.includes(development.id);

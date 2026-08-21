@@ -7,6 +7,16 @@ from apps.geo.models import Municipality, State
 from apps.listings.models import AvailabilityRecord, Listing, PriceRecord
 
 
+@pytest.fixture(autouse=True)
+def clear_throttle_cache():
+    """Keep IP-based throttle state isolated between tests."""
+    from django.core.cache import cache
+
+    cache.clear()
+    yield
+    cache.clear()
+
+
 @pytest.fixture
 def owner(db):
     return User.objects.create_superuser(email="owner@example.test", password="A-secure-test-password!", first_name="Owner")

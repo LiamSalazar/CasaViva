@@ -118,7 +118,10 @@ class Sale(UUIDTimeStampedModel):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_sales")
 
     class Meta:
-        constraints = [models.CheckConstraint(condition=Q(sale_price__gte=0), name="sale_price_nonnegative")]
+        constraints = [
+            models.CheckConstraint(condition=Q(sale_price__gte=0), name="sale_price_nonnegative"),
+            models.CheckConstraint(condition=Q(status__in=["CLOSED", "CANCELLED"]), name="sale_status_valid"),
+        ]
         permissions = [("manage_sales", "Puede administrar ventas")]
 
 
