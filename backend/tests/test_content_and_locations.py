@@ -1,6 +1,8 @@
 import pytest
 
-from apps.content.models import Guide, HomeContent, HomeHeroSlide, LocationContent
+from django.core.management import call_command
+
+from apps.content.models import Guide, HomeContent, HomeHeroSlide, LocationContent, SiteSettings
 from apps.catalog.models import Amenity, Development, DevelopmentMedia
 from apps.geo.models import Locality, Neighborhood
 from apps.media_library.models import MediaAsset
@@ -47,6 +49,58 @@ def test_location_editorial_content_crud_is_separate_from_geo_catalog(admin_clie
     municipality_after = next(item for state in public_after.data for item in state["municipalities"] if str(item["id"]) == str(municipality.id))
     assert municipality_after["content_id"] is None
 
+
+@pytest.mark.django_db
+def test_site_settings_seed_is_idempotent_editable_and_public_contract_is_minimal(admin_client):
+    call_command("seed_system")
+    settings = SiteSettings.objects.get(key="main")
+    assert settings.contact_email == "casavivabyana@gmail.com"
+    assert settings.facebook_url == "https://www.facebook.com/share/1HNjVPdtWy/"
+    assert settings.instagram_url == "https://www.instagram.com/casaacbviva.inmuebles?igsi=YzA5aDBsdW9vbnox"
+    assert settings.tiktok_url == "https://www.tiktok.com/@ana.casaviva?_r=1&_t=ZS-999Ov10JJcD"
+
+    changed = admin_client.patch(
+        f"/api/v1/admin/site-settings/{settings.id}/",
+        {"version": settings.version, "instagram_url": "https://example.test/casaviva"},
+        format="json",
+    )
+    assert changed.status_code == 200, changed.data
+    call_command("seed_system")
+    settings.refresh_from_db()
+    assert settings.instagram_url == "https://example.test/casaviva"
+    invalid = admin_client.patch(
+        f"/api/v1/admin/site-settings/{settings.id}/",
+        {"version": settings.version, "facebook_url": "javascript:alert(1)"},
+        format="json",
+    )
+    assert invalid.status_code == 400
+
+    public = admin_client.get("/api/v1/public/site-settings/")
+    assert public.status_code == 200
+    assert set(public.data["results"][0]) == {
+        "contact_email", "facebook_url", "instagram_url", "tiktok_url",
+    }
+
+
+@pytest.mark.django_db
+def test_public_guide_detail_does_not_depend_on_first_page(admin_client):
+    for index in range(30):
+        Guide.objects.create(
+            slug=f"guia-{index:02d}", title=f"Guía {index:02d}", category="hogar",
+            is_published=True,
+        )
+    first_page = admin_client.get("/api/v1/public/guides/")
+    assert first_page.status_code == 200 and first_page.data["next"] is not None
+    second_page_slug = "guia-00"
+    assert all(item["slug"] != second_page_slug for item in first_page.data["results"])
+    detail = admin_client.get(f"/api/v1/public/guides/{second_page_slug}/")
+    assert detail.status_code == 200
+    assert detail.data["slug"] == second_page_slug
+    assert set(detail.data) == {
+        "id", "slug", "title", "excerpt", "content", "category", "heroImage",
+        "published", "featured", "createdAt",
+    }
+    assert "version" not in detail.data and "hero_media" not in detail.data
 
 @pytest.mark.django_db
 def test_draft_guide_is_admin_only_until_published(admin_client):
@@ -186,3 +240,19 @@ def test_geo_catalog_admin_creates_dependent_options_and_deactivates_them(admin_
     deactivated = admin_client.delete(f"/api/v1/admin/neighborhoods/{neighborhood_response.data['id']}/")
     assert deactivated.status_code == 204
     assert Neighborhood.objects.get(pk=neighborhood_response.data["id"]).is_active is False
+    reactivated = admin_client.patch(
+        f"/api/v1/admin/neighborhoods/{neighborhood_response.data['id']}/",
+        {"name": "Colonia corregida", "is_active": True}, format="json",
+    )
+    assert reactivated.status_code == 200, reactivated.data
+    assert Neighborhood.objects.get(pk=neighborhood_response.data["id"]).name == "Colonia corregida"
+    assert admin_client.delete(f"/api/v1/admin/neighborhoods/{neighborhood_response.data['id']}/").status_code == 204
+    preview = admin_client.get(f"/api/v1/admin/neighborhoods/{neighborhood_response.data['id']}/delete-preview/")
+    assert preview.status_code == 200 and preview.data["can_delete"] is True
+    removed = admin_client.post(
+        f"/api/v1/admin/neighborhoods/{neighborhood_response.data['id']}/hard-delete/",
+        {"confirmation": "Colonia corregida", "reason": "Ubicación duplicada creada por error"},
+        format="json",
+    )
+    assert removed.status_code == 204
+    assert not Neighborhood.objects.filter(pk=neighborhood_response.data["id"]).exists()

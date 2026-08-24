@@ -3,10 +3,10 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { api, apiFetch, buildPropertyPayload, fetchAllPages, mapProperty } from "@/services/api";
-import type { Development, Guide, HomeContent, Inquiry, Location, Property, SavedSearch } from "@/types";
+import type { Development, Guide, HomeContent, Inquiry, Location, Property, SavedSearch, SiteSettings } from "@/types";
 
 interface CasaVivaState {
-  properties: Property[]; developments: Development[]; locations: Location[]; guides: Guide[]; inquiries: Inquiry[]; homeContent: HomeContent;
+  properties: Property[]; developments: Development[]; locations: Location[]; guides: Guide[]; inquiries: Inquiry[]; homeContent: HomeContent; siteSettings: SiteSettings | null;
   favorites: string[]; notes: Record<string, string>; savedSearches: SavedSearch[];
   adminAuthenticated: boolean; adminInitialized: boolean; hydrated: boolean; loading: boolean; error?: string;
   initialize: () => Promise<void>; refreshAdmin: () => Promise<void>; setHydrated: (value: boolean) => void;
@@ -15,7 +15,7 @@ interface CasaVivaState {
   saveLocation: (item: Location) => Promise<void>; deleteLocation: (id: string) => Promise<void>;
   saveGuide: (item: Guide) => Promise<void>; deleteGuide: (id: string) => Promise<void>;
   addInquiry: (item: Inquiry) => Promise<void>; setInquiryStatus: (id: string, status: Inquiry["status"]) => Promise<void>;
-  setHomeContent: (item: HomeContent) => Promise<void>; toggleFavorite: (id: string) => void; clearFavorites: () => void;
+  setHomeContent: (item: HomeContent) => Promise<void>; setSiteSettings: (item: SiteSettings) => void; toggleFavorite: (id: string) => void; clearFavorites: () => void;
   setNote: (id: string, note: string) => void; saveSearch: (item: SavedSearch) => void; login: () => void; logout: () => Promise<void>;
 }
 
@@ -35,21 +35,21 @@ async function persistLocationContent(item: Location) {
 export const useCasaVivaStore = create<CasaVivaState>()(
   persist(
     (set, get) => ({
-      properties: [], developments: [], locations: [], guides: [], inquiries: [], homeContent: emptyHome,
+      properties: [], developments: [], locations: [], guides: [], inquiries: [], homeContent: emptyHome, siteSettings: null,
       favorites: [], notes: {}, savedSearches: [], adminAuthenticated: false, adminInitialized: false, hydrated: false, loading: false,
       setHydrated: (hydrated) => set({ hydrated }),
       initialize: async () => {
         if (get().loading) return;
         set({ loading: true, error: undefined });
         try {
-          const [properties, developments, locations, guides, home, session] = await Promise.all([api.publicListings(), api.developments(), api.locations(), api.guides(), api.home(), apiFetch<{ authenticated?: boolean }>("/api/v1/auth/me/").then((value) => value.authenticated !== false).catch(() => false)]);
+          const [properties, developments, locations, guides, home, siteSettings, session] = await Promise.all([api.publicListings(), api.developments(), api.locations(), api.guides(), api.home(), api.siteSettings(), apiFetch<{ authenticated?: boolean }>("/api/v1/auth/me/").then((value) => value.authenticated !== false).catch(() => false)]);
           const featured: Property[] = (home.featured_listings || []).map(mapProperty);
           const heroRaw: Record<string, any>[] = home.hero || [];
           const hero: Property[] = heroRaw.map(mapProperty);
           const merged = [...properties];
           [...featured, ...hero].forEach((p) => { if (!merged.some((x) => x.id === p.id)) merged.push(p); });
           set({
-            properties: merged, developments, locations, guides,
+            properties: merged, developments, locations, guides, siteSettings,
             homeContent: {
               id: home.content?.id, version: home.content?.version,
               heroEyebrow: home.content?.hero_eyebrow || "Propiedades en México", heroTitle: home.content?.hero_title || "Encuentra el lugar que quieres llamar hogar",
@@ -147,6 +147,7 @@ export const useCasaVivaStore = create<CasaVivaState>()(
         set({ homeContent: item });
         await get().refreshAdmin();
       },
+      setSiteSettings: (siteSettings) => set({ siteSettings }),
       toggleFavorite: (id) => set((s) => ({ favorites: s.favorites.includes(id) ? s.favorites.filter((x) => x !== id) : [...s.favorites, id] })),
       clearFavorites: () => set({ favorites: [] }), setNote: (id, note) => set((s) => ({ notes: { ...s.notes, [id]: note } })),
       saveSearch: (item) => set((s) => ({ savedSearches: [item, ...s.savedSearches] })), login: () => set({ adminAuthenticated: true, adminInitialized: false }),

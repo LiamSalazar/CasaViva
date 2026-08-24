@@ -14,6 +14,7 @@ Convenciones: entidades de negocio usan UUID; timestamps son `timestamptz` en Po
 | | `last_password_change_at` | timestamptz | No | Control de seguridad. |
 | `accounts_recoverycode` | `user_id` | UUID | No | FK CASCADE a usuario. |
 | | `code_hash`, `used_at` | varchar(256), timestamptz | Sí sólo uso | Hash adaptativo de Django y consumo único. |
+| `accounts_permissionoverride` | `user_id`, `permission_id`, `effect`, `created_by_id?` | UUID/FKs/varchar | No salvo actor | Override único ALLOW/DENY; DENY prevalece sobre Group. |
 | `audit_auditevent` | `actor_user_id` | UUID | Sí | SET NULL; actor puede ser sistema. |
 | | `action`, `entity_type`, `entity_id` | varchar | No | Acción y objeto histórico. |
 | | `old_values`, `new_values` | JSONB | Sí | Snapshots sanitizados. |
@@ -86,6 +87,7 @@ Todas las entidades editables anteriores incluyen `version` para optimistic lock
 | `marketing_marketingspend` | campaña, fecha, amount, currency, `is_voided`, actor/fecha/motivo | numeric | Gasto manual MXN no negativo; anulación conserva historia y BI la excluye. |
 | `content_homecontent` | key, textos, media editorial? | texto/FK | Contenido editable del home. |
 | `content_homeheroslide` | home, listing, overrides?, orden, activo | FKs/texto | Slides persistentes y reordenables; pareja home/listing única. |
+| `content_sitesettings` | key, contact_email, facebook_url?, instagram_url?, tiktok_url? | texto/URL | Configuración singleton editable de contacto público; seed no sobrescribe cambios humanos. |
 | `content_guide` | slug, título, extracto, contenido, categoría, media?, flags, publicación? | texto/FK | Guías públicas administrables. |
 | `content_locationcontent` | `municipality_id`, `slug`, descripción, media?, destacado, latitud?, longitud? | UUID/text/decimal | Contenido editorial 1:1 de una ubicación; no contamina el catálogo geográfico. |
 

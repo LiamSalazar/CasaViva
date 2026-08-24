@@ -140,6 +140,13 @@ def test_marketing_spend_is_voided_not_deleted_and_mxn_is_enforced(admin_client)
     assert voided.status_code == 200, voided.data
     spend = MarketingSpend.objects.get(pk=created.data["id"])
     assert spend.is_voided and str(spend.voided_by_id) == admin_client.session.get("_auth_user_id")
+    immutable = admin_client.patch(
+        f"/api/v1/admin/marketing-spend/{spend.id}/",
+        {"amount": "25.00"}, format="json",
+    )
+    assert immutable.status_code == 400
+    spend.refresh_from_db()
+    assert spend.amount == 100
 
 
 @pytest.mark.django_db
@@ -194,3 +201,36 @@ def test_business_catalog_with_relations_cannot_be_hard_deleted(admin_client, ca
     blocked = admin_client.post(f"/api/v1/admin/developers/{developer.id}/hard-delete/", {"confirmation": developer.name, "reason": "Intento de eliminación protegida"}, format="json")
     assert blocked.status_code == 400
     assert Developer.all_objects.filter(pk=developer.id).exists()
+
+
+@pytest.mark.django_db
+def test_owner_can_deny_and_restore_a_permission_inherited_from_founder_group(owner):
+    call_command("seed_system")
+    ana = User.objects.create_user(
+        email="ana-deny@example.test", password="A-secure-test-password!", first_name="Ana"
+    )
+    ana.groups.add(Group.objects.get(name="Founder Admin"))
+    owner_client = verified_client(owner)
+    sales_permission = "crm.manage_sales"
+    effective = sorted(ana.get_all_permissions())
+    assert sales_permission in effective
+
+    denied = owner_client.post(
+        f"/api/v1/admin/users/{ana.id}/permissions/",
+        {"permissions": [key for key in effective if key != sales_permission]}, format="json",
+    )
+    assert denied.status_code == 200, denied.data
+    ana.refresh_from_db()
+    assert not ana.has_perm(sales_permission)
+    assert verified_client(ana).get("/api/v1/admin/sales/").status_code == 403
+    detail = next(item for item in denied.data["permission_details"] if item["key"] == sales_permission)
+    assert detail["effect"] == "DENY" and detail["effective"] is False
+
+    restored = owner_client.post(
+        f"/api/v1/admin/users/{ana.id}/permissions/",
+        {"permissions": effective}, format="json",
+    )
+    assert restored.status_code == 200, restored.data
+    ana.refresh_from_db()
+    assert ana.has_perm(sales_permission)
+    assert verified_client(ana).get("/api/v1/admin/sales/").status_code == 200

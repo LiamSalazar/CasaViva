@@ -100,3 +100,19 @@ test("CMS persiste el Hero y una guía pasa de borrador a pública con imagen", 
   await expect(page.getByRole("heading", { name: "Guía borrador E2E" })).toBeVisible();
   assertNoErrors();
 });
+
+test("Founder actualiza redes y el sitio público refleja la configuración central", async ({ page }) => {
+  const assertNoErrors = failOnPageErrors(page);
+  const instagram = "https://www.instagram.com/casaviva-e2e/";
+  await loginAdmin(page, "content@example.test");
+  await page.goto("/administracion/contenido");
+  await page.getByLabel("Instagram", { exact: true }).fill(instagram);
+  await page.getByRole("button", { name: "Guardar información de contacto" }).click();
+  await expect(page.getByText("Información de contacto guardada")).toBeVisible();
+  await page.goto("/contacto");
+  const publicLinks = page.getByRole("link", { name: "Instagram de CasaViva" });
+  await expect(publicLinks).toHaveCount(2);
+  await expect(publicLinks.first()).toHaveAttribute("href", instagram);
+  await expect(publicLinks.last()).toHaveAttribute("href", instagram);
+  assertNoErrors();
+});

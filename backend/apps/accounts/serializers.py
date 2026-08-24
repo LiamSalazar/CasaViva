@@ -1,7 +1,7 @@
 from django.contrib.auth import authenticate
 from django_otp.plugins.otp_totp.models import TOTPDevice
 from rest_framework import serializers
-from .models import User
+from .models import PermissionOverride, User
 from django.contrib.auth.models import Group
 from django.contrib.auth.password_validation import validate_password
 
@@ -13,12 +13,13 @@ class UserSerializer(serializers.ModelSerializer):
     can_manage_users = serializers.SerializerMethodField()
     effective_permissions = serializers.SerializerMethodField()
     direct_permissions = serializers.SerializerMethodField()
+    permission_details = serializers.SerializerMethodField()
     password = serializers.CharField(write_only=True, required=False, min_length=12)
     role_name = serializers.CharField(write_only=True, required=False)
 
     class Meta:
         model = User
-        fields = ["id", "email", "first_name", "last_name", "name", "role", "role_name", "password", "is_active", "last_login", "mfa_enabled", "can_manage_users", "authz_version", "effective_permissions", "direct_permissions"]
+        fields = ["id", "email", "first_name", "last_name", "name", "role", "role_name", "password", "is_active", "last_login", "mfa_enabled", "can_manage_users", "authz_version", "effective_permissions", "direct_permissions", "permission_details"]
         read_only_fields = ["id", "last_login", "authz_version"]
 
     def get_role(self, obj):
@@ -35,6 +36,33 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_direct_permissions(self, obj):
         return sorted(f"{permission.content_type.app_label}.{permission.codename}" for permission in obj.user_permissions.select_related("content_type"))
+
+    def get_permission_details(self, obj):
+        overrides = {
+            f"{item.permission.content_type.app_label}.{item.permission.codename}": item.effect
+            for item in obj.permission_overrides.select_related("permission__content_type")
+        }
+        group_permissions = {
+            f"{permission.content_type.app_label}.{permission.codename}": group.name
+            for group in obj.groups.prefetch_related("permissions__content_type")
+            for permission in group.permissions.all()
+        }
+        keys = set(group_permissions) | set(overrides) | set(self.get_direct_permissions(obj))
+        return [
+            {
+                "key": key,
+                "effective": obj.has_perm(key),
+                "effect": overrides.get(key),
+                "origin": (
+                    f"{group_permissions[key]} + {overrides[key]} personalizado"
+                    if key in group_permissions and key in overrides
+                    else "Permiso personalizado" if key in overrides
+                    else f"Heredado de {group_permissions[key]}" if key in group_permissions
+                    else "Permiso directo heredado"
+                ),
+            }
+            for key in sorted(keys)
+        ]
 
     def create(self, validated_data):
         role = validated_data.pop("role_name", "Founder Admin")

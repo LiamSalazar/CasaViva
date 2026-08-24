@@ -55,15 +55,18 @@ class BusinessViewSet(viewsets.ModelViewSet):
 
     def dependency_summary(self, obj):
         if isinstance(obj, Developer):
-            return {"developments": obj.developments.count(), "models": obj.housing_models.count()}
+            return {
+                "developments": Development.all_objects.filter(developer=obj).count(),
+                "models": HousingModel.all_objects.filter(developer=obj).count(),
+            }
         if isinstance(obj, Development):
-            links = obj.model_links.all()
+            links = DevelopmentModel.all_objects.filter(development=obj)
             return {"models": links.count(), "properties": PropertyOffering.all_objects.filter(development_model__in=links).count()}
         if isinstance(obj, HousingModel):
-            links = obj.development_links.all()
+            links = DevelopmentModel.all_objects.filter(housing_model=obj)
             return {"developments": links.count(), "properties": PropertyOffering.all_objects.filter(development_model__in=links).count()}
         if isinstance(obj, DevelopmentModel):
-            return {"properties": obj.offerings.count()}
+            return {"properties": PropertyOffering.all_objects.filter(development_model=obj).count()}
         return {"uses": 1}
 
     @action(detail=True, methods=["get"], url_path="delete-preview")

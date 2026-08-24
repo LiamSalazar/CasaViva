@@ -546,24 +546,34 @@ export function PropertyNote({ id }: { id: string }) {
     </div>
   );
 }
-export function SecondaryGallery({ property }: { property: Property }) {
+export function SecondaryGallery({ property, kind = "photos" }: { property: Property; kind?: "photos" | "floorplans" }) {
+  const [index, setIndex] = useState<number | null>(null);
+  const images = kind === "floorplans" ? property.floorplans || [] : property.gallery;
+  const move = (delta: number) => setIndex((current) => current === null ? 0 : (current + delta + images.length) % images.length);
   return (
-    <div className="secondary-gallery">
-      {property.gallery.slice(0, 5).map((src, i) => (
-        <button key={src + i}>
+    <>
+    <div className={kind === "floorplans" ? "secondary-gallery floorplan-gallery" : "secondary-gallery"}>
+      {images.slice(0, 5).map((src, i) => (
+        <button key={src + i} type="button" onClick={() => setIndex(i)} aria-label={`Abrir ${kind === "floorplans" ? "plano" : "foto"} ${i + 1}`}>
           <Image
             src={src}
-            alt={`${property.title}, galería ${i + 1}`}
+            alt={`${property.title}, ${kind === "floorplans" ? "plano" : "galería"} ${i + 1}`}
             fill
             sizes="35vw"
           />
           {i === 4 && (
             <span className="gallery-more">
-              Ver las {property.gallery.length} fotos
+              Ver {images.length} {kind === "floorplans" ? "planos" : "fotos"}
             </span>
           )}
         </button>
       ))}
     </div>
+    {index !== null && images.length > 0 && <div className="fullscreen-gallery" role="dialog" aria-modal="true" aria-label={kind === "floorplans" ? "Planos de propiedad" : "Galería de propiedad"}>
+      <header><span>{kind === "floorplans" ? "Plano" : "Foto"} {index + 1} / {images.length}</span><button className="icon-button" onClick={() => setIndex(null)} aria-label="Cerrar"><X /></button></header>
+      <div className="fullscreen-image"><Image src={images[index]} alt={`${property.title}, ${kind === "floorplans" ? "plano" : "foto"} ${index + 1}`} fill sizes="100vw" /></div>
+      {images.length > 1 && <><button className="gallery-nav prev" onClick={() => move(-1)} aria-label="Anterior"><ChevronLeft /></button><button className="gallery-nav next" onClick={() => move(1)} aria-label="Siguiente"><ChevronRight /></button></>}
+    </div>}
+    </>
   );
 }

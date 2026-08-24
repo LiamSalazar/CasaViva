@@ -19,6 +19,8 @@ El primer acceso sin dispositivo confirmado permite crear un TOTP y exige confir
 
 Las operaciones de usuarios, permisos, hard delete y reset MFA usan el helper central `has_recent_mfa`; un timestamp ausente, ilegible o con más de 15 minutos produce 403. Cambiar rol, permisos, estado, contraseña o MFA invalida las sesiones afectadas mediante `authz_version` y eliminación de sesiones server-side.
 
+El acceso efectivo combina el rol base (`Group`) con un único override ALLOW/DENY por usuario y permiso. DENY prevalece sobre el rol, después ALLOW y finalmente el permiso heredado. Sólo Owner puede modificar overrides; la operación exige MFA reciente, queda auditada e invalida sesiones. Esto permite retirar realmente un permiso heredado sin alterar el rol común de otros founders.
+
 ## Roles PostgreSQL e inmutabilidad
 
 `docker/postgres/init-roles.sh` crea roles sin `SUPERUSER`, `CREATEDB` ni `CREATEROLE`. El comando idempotente `harden_database_roles` puede aplicarse tanto a una instalación nueva como existente:
@@ -34,4 +36,4 @@ El hardening se ejecuta obligatoriamente después de cada `migrate` y antes de s
 
 Los formularios públicos exigen consentimiento explícito y conservan versión del aviso, propósito, sesión y visitante. Una solicitud de visita crea una Inquiry, no una Visit. Los gastos de marketing se anulan con motivo, actor, MFA reciente y auditoría, y no se eliminan por CRUD. La actualización de usuarios usa un serializer cerrado, validadores de contraseña y email normalizado/único; `is_superuser` nunca es un campo editable.
 
-Producción admite storage S3-compatible y PostgreSQL con SSL por variables de entorno. Faltantes críticos detienen el arranque. CORS no se abre globalmente; se prefiere same-origin y CSRF permanece activo.
+Producción admite storage S3-compatible y PostgreSQL con SSL por variables de entorno. Faltantes críticos detienen el arranque. Los hosts de media de Next se declaran durante el build y los `MediaAsset` públicos se sirven mediante un bucket/CDN público controlado; no se incorporan credenciales al frontend. HSTS inicia desactivado y aumenta gradualmente tras validar HTTPS. CORS no se abre globalmente; se prefiere same-origin y CSRF permanece activo.

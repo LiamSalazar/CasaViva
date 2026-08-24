@@ -5,6 +5,8 @@ RUN npm ci
 
 FROM node:22-alpine AS builder
 WORKDIR /app
+ARG MEDIA_REMOTE_HOSTNAME
+ENV MEDIA_REMOTE_HOSTNAME=${MEDIA_REMOTE_HOSTNAME}
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 RUN npm run build

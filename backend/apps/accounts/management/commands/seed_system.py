@@ -4,6 +4,7 @@ from django.utils import timezone
 from apps.accounts.services import seed_groups
 from apps.catalog.models import Amenity, FeatureDefinition, PropertyType
 from apps.crm.models import PrivacyNoticeVersion
+from apps.content.models import SiteSettings
 import hashlib
 from datetime import datetime
 
@@ -25,6 +26,15 @@ class Command(BaseCommand):
             slug = name.lower().replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u").replace(" ", "-")
             Amenity.objects.get_or_create(slug=slug, defaults={"name": name, "category": category, "sort_order": order})
         FeatureDefinition.objects.get_or_create(code="area-tv-home-office", defaults={"label": "Área de TV / Home Office", "category": "Interior", "data_type": "BOOLEAN", "is_public": True})
+        SiteSettings.objects.get_or_create(
+            key="main",
+            defaults={
+                "contact_email": "casavivabyana@gmail.com",
+                "facebook_url": "https://www.facebook.com/share/1HNjVPdtWy/",
+                "instagram_url": "https://www.instagram.com/casaacbviva.inmuebles?igsi=YzA5aDBsdW9vbnox",
+                "tiktok_url": "https://www.tiktok.com/@ana.casaviva?_r=1&_t=ZS-999Ov10JJcD",
+            },
+        )
         if not PrivacyNoticeVersion.objects.filter(is_active=True).exists():
             current_notice = (
                 "CasaViva trata la información proporcionada para atender consultas, coordinar visitas y dar seguimiento a solicitudes inmobiliarias.\n"

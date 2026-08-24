@@ -35,6 +35,7 @@ import type {
   Property,
   PropertyType,
   PropertyTypeOption,
+  SiteSettings,
 } from "@/types";
 import {
   developmentService,
@@ -1329,11 +1330,20 @@ export function AdminContentPage() {
 }
 
 function AdminContentEditor({ initialContent }: { initialContent: HomeContent }) {
-  const { properties, locations, developments } = useCasaViva();
+  const { properties, locations, developments, setSiteSettings: updatePublicSiteSettings } = useCasaViva();
   const [x, setX] = useState<HomeContent>(() => structuredClone(initialContent));
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>({ contact_email: "", facebook_url: "", instagram_url: "", tiktok_url: "" });
+  const [contactLoaded, setContactLoaded] = useState(false);
+  const [savingContact, setSavingContact] = useState(false);
   const { toast } = useToast();
+  useEffect(() => {
+    apiFetch<{ results: SiteSettings[] }>("/api/v1/admin/site-settings/?page_size=1")
+      .then((page) => { if (page.results[0]) setSiteSettings(page.results[0]); })
+      .catch((error) => toast(error instanceof Error ? error.message : "No fue posible cargar la información de contacto"))
+      .finally(() => setContactLoaded(true));
+  }, [toast]);
   const toggle = (
     key:
       | "featuredPropertyIds"
@@ -1470,6 +1480,24 @@ function AdminContentEditor({ initialContent }: { initialContent: HomeContent })
           {saving ? "Guardando…" : "Guardar contenido"}
         </button>
       </div>
+      <FormSection title="Información de contacto">
+        <p className="muted">Estos datos se muestran en el pie del sitio y en Contacto.</p>
+        {contactLoaded ? <div className="admin-form-grid">
+          <Text label="Correo" value={siteSettings.contact_email} onChange={(value) => setSiteSettings((current) => ({ ...current, contact_email: value }))} />
+          <Text label="Facebook" value={siteSettings.facebook_url || ""} onChange={(value) => setSiteSettings((current) => ({ ...current, facebook_url: value || null }))} />
+          <Text label="Instagram" value={siteSettings.instagram_url || ""} onChange={(value) => setSiteSettings((current) => ({ ...current, instagram_url: value || null }))} />
+          <Text label="TikTok" value={siteSettings.tiktok_url || ""} onChange={(value) => setSiteSettings((current) => ({ ...current, tiktok_url: value || null }))} />
+        </div> : <p className="muted">Cargando información de contacto…</p>}
+        <div className="admin-form-actions"><button className="button" disabled={savingContact || !siteSettings.contact_email} onClick={async () => {
+          setSavingContact(true);
+          try {
+            const exists = Boolean(siteSettings.id);
+            const saved = await apiFetch<SiteSettings>(exists ? `/api/v1/admin/site-settings/${siteSettings.id}/` : "/api/v1/admin/site-settings/", { method: exists ? "PATCH" : "POST", body: JSON.stringify({ key: "main", contact_email: siteSettings.contact_email, facebook_url: siteSettings.facebook_url || null, instagram_url: siteSettings.instagram_url || null, tiktok_url: siteSettings.tiktok_url || null, ...(exists ? { version: siteSettings.version } : {}) }) });
+            setSiteSettings(saved); updatePublicSiteSettings(saved); toast("Información de contacto guardada");
+          } catch (error) { toast(error instanceof Error ? error.message : "No fue posible guardar"); }
+          finally { setSavingContact(false); }
+        }}>{savingContact ? "Guardando…" : "Guardar información de contacto"}</button></div>
+      </FormSection>
     </AdminLayout>
   );
 }

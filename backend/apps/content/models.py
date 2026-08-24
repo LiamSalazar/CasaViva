@@ -16,6 +16,17 @@ class HomeContent(BusinessModel):
         permissions = [("manage_content", "Puede administrar contenido público")]
 
 
+class SiteSettings(BusinessModel):
+    key = models.CharField(max_length=40, unique=True, default="main")
+    contact_email = models.EmailField()
+    facebook_url = models.URLField(null=True, blank=True)
+    instagram_url = models.URLField(null=True, blank=True)
+    tiktok_url = models.URLField(null=True, blank=True)
+
+    def __str__(self):
+        return "Información de contacto de CasaViva"
+
+
 class HomeHeroSlide(BusinessModel):
     home_content = models.ForeignKey(HomeContent, on_delete=models.PROTECT, related_name="hero_slides")
     listing = models.ForeignKey("listings.Listing", on_delete=models.PROTECT, related_name="home_hero_slides")

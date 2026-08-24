@@ -18,6 +18,7 @@ erDiagram
     datetime updated_at
   }
   RECOVERY_CODE { uuid id PK uuid user_id FK string code_hash datetime used_at datetime created_at }
+  PERMISSION_OVERRIDE { uuid id PK uuid user_id FK integer permission_id FK string effect uuid created_by_id FK }
   STATE { uuid id PK string name UK string code UK boolean is_active }
   MUNICIPALITY { uuid id PK uuid state_id FK string name boolean is_active boolean is_featured }
   LOCALITY { uuid id PK uuid municipality_id FK string name boolean is_active }
@@ -58,11 +59,13 @@ erDiagram
   MARKETING_SPEND { uuid id PK uuid campaign_id FK date date decimal amount string currency boolean is_voided datetime voided_at uuid voided_by_id FK string void_reason }
   HOME_CONTENT { uuid id PK string key UK string hero_title string editorial_title text editorial_body uuid editorial_media_id FK integer version datetime archived_at }
   HOME_HERO_SLIDE { uuid id PK uuid home_content_id FK uuid listing_id FK string eyebrow_override string title_override string subtitle_override integer sort_order boolean is_active integer version datetime archived_at }
+  SITE_SETTINGS { uuid id PK string key UK string contact_email string facebook_url string instagram_url string tiktok_url integer version datetime archived_at }
   GUIDE { uuid id PK string slug UK string title text excerpt text content string category uuid hero_media_id FK boolean is_published boolean is_featured datetime published_at integer version datetime archived_at }
   LOCATION_CONTENT { uuid id PK uuid municipality_id FK string slug UK text description uuid hero_media_id FK boolean is_featured decimal latitude decimal longitude integer version datetime archived_at }
   AUDIT_EVENT { uuid id PK datetime occurred_at uuid actor_user_id FK string action string entity_type string entity_id json old_values json new_values string request_id string ip_hash boolean success text reason }
 
   USER ||--o{ RECOVERY_CODE : posee
+  USER ||--o{ PERMISSION_OVERRIDE : personaliza
   STATE ||--o{ MUNICIPALITY : contiene
   MUNICIPALITY ||--o{ LOCALITY : contiene
   MUNICIPALITY ||--o{ NEIGHBORHOOD : contiene

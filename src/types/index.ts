@@ -88,6 +88,15 @@ export interface SearchOptions {
 }
 
 export interface ApiPage<T> { count: number; next: string | null; previous: string | null; results: T[] }
+export interface SiteSettings {
+  id?: string;
+  key?: string;
+  contact_email: string;
+  facebook_url?: string | null;
+  instagram_url?: string | null;
+  tiktok_url?: string | null;
+  version?: number;
+}
 export interface SearchFacets {
   property_types: Array<{ offering__property_type__code: string; offering__property_type__name: string; count: number }>;
   conditions: Array<{ offering__condition: "NEW" | "USED"; count: number }>;

@@ -288,6 +288,12 @@ export function PublicHeader({
 export const PublicHeaderOverlay = () => <PublicHeader overlay />;
 export const SearchHeader = () => <PublicHeader search />;
 export function Footer() {
+  const { siteSettings } = useCasaViva();
+  const socialLinks = [
+    ["Instagram", siteSettings?.instagram_url, "Instagram de CasaViva"],
+    ["Facebook", siteSettings?.facebook_url, "Facebook de CasaViva"],
+    ["TikTok", siteSettings?.tiktok_url, "TikTok de CasaViva"],
+  ].filter((item): item is [string, string, string] => Boolean(item[1]));
   return (
     <footer className="site-footer">
       <div className="footer-grid">
@@ -320,18 +326,8 @@ export function Footer() {
         />
         <div>
           <h3>Síguenos</h3>
-          <a href="https://instagram.com" target="_blank" rel="noreferrer">
-            Instagram
-          </a>
-          <a href="https://facebook.com" target="_blank" rel="noreferrer">
-            Facebook
-          </a>
-          <a href="https://tiktok.com" target="_blank" rel="noreferrer">
-            TikTok
-          </a>
-          <a href="https://youtube.com" target="_blank" rel="noreferrer">
-            YouTube
-          </a>
+          {siteSettings?.contact_email && <a href={`mailto:${siteSettings.contact_email}`}>{siteSettings.contact_email}</a>}
+          {socialLinks.map(([label, href, ariaLabel]) => <a key={label} href={href} target="_blank" rel="noopener noreferrer" aria-label={ariaLabel}>{label}</a>)}
         </div>
       </div>
       <div className="footer-bottom">

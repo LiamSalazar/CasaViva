@@ -1,7 +1,7 @@
 import pytest
 from django.test import override_settings
 from django.utils import timezone
-from datetime import timedelta
+from datetime import datetime, timedelta
 from apps.analytics.models import AnalyticsEvent, AnonymousVisitor, WebSession
 from apps.crm.models import Inquiry, Lead, Sale, Visit
 from apps.marketing.models import MarketingCampaign, MarketingSpend
@@ -230,3 +230,62 @@ def test_deferred_attribution_and_campaign_spend_are_not_duplicated(admin_client
     assert all(row["spend"] is None for row in cohort.data["creatives"])
     assert sales_period.data["sales_by_origin"][0]["utm_campaign"] == "campaign_a"
     assert sales_period.data["sales_by_origin"][0]["closed_sales"] == 1
+
+
+@pytest.mark.django_db
+def test_marketing_horizon_is_calculated_from_each_lead_acquisition(admin_client, owner, catalog):
+    zone = timezone.get_current_timezone()
+    acquired_a = timezone.make_aware(datetime(2026, 8, 1, 12), zone)
+    acquired_b = timezone.make_aware(datetime(2026, 8, 31, 12), zone)
+    visitor_a = AnonymousVisitor.objects.create(first_seen_at=acquired_a, last_seen_at=acquired_a)
+    visitor_b = AnonymousVisitor.objects.create(first_seen_at=acquired_b, last_seen_at=acquired_b)
+    lead_a = Lead.objects.create(first_name="Fuera")
+    lead_b = Lead.objects.create(first_name="Dentro")
+    for visitor, lead, acquired, content in [
+        (visitor_a, lead_a, acquired_a, "content_a"),
+        (visitor_b, lead_b, acquired_b, "content_b"),
+    ]:
+        WebSession.objects.create(
+            visitor=visitor, lead=lead, started_at=acquired, last_seen_at=acquired,
+            landing_path="/", consent_state="ESSENTIAL", utm_campaign="cohorte",
+            utm_source="instagram", utm_medium="paid_social", utm_content=content,
+        )
+    Sale.objects.create(
+        lead=lead_a, offering=catalog["offering"], listing=catalog["listing"],
+        sale_price=1_000_000, closed_at=acquired_a + timedelta(days=100), created_by=owner,
+    )
+    Sale.objects.create(
+        lead=lead_b, offering=catalog["offering"], listing=catalog["listing"],
+        sale_price=1_000_000, closed_at=acquired_b + timedelta(days=80), created_by=owner,
+    )
+
+    response = admin_client.get(
+        "/api/v1/admin/bi/marketing/?period=custom&start=2026-08-01&end=2026-08-31&horizon=90"
+    )
+    assert response.status_code == 200, response.data
+    campaign = next(row for row in response.data["campaigns"] if row["utm_campaign"] == "cohorte")
+    assert campaign["leads"] == 2
+    assert campaign["closed_sales"] == 1
+    creatives = {row["utm_content"]: row for row in response.data["creatives"]}
+    assert creatives["content_a"]["closed_sales"] == 0
+    assert creatives["content_b"]["closed_sales"] == 1
+
+
+@pytest.mark.django_db
+def test_campaign_with_spend_and_zero_sessions_is_visible_without_fake_costs(admin_client, owner):
+    campaign = MarketingCampaign.objects.create(
+        name="Facebook Chalco Agosto", utm_campaign="chalco_agosto", channel="Social",
+        start_date=datetime(2026, 8, 1).date(), created_by=owner, updated_by=owner,
+    )
+    MarketingSpend.objects.create(campaign=campaign, date=datetime(2026, 8, 10).date(), amount=5000)
+    response = admin_client.get(
+        "/api/v1/admin/bi/marketing/?period=custom&start=2026-08-01&end=2026-08-31&horizon=90"
+    )
+    assert response.status_code == 200, response.data
+    row = next(item for item in response.data["campaigns"] if item["utm_campaign"] == "chalco_agosto")
+    assert row["sessions"] == row["leads"] == row["closed_sales"] == 0
+    assert row["spend"] == 5000
+    assert row["cost_per_lead"] is None
+    assert row["cost_per_inquiry"] is None
+    assert row["cost_per_completed_visit"] is None
+    assert row["cost_per_sale"] is None

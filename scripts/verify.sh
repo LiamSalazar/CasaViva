@@ -5,6 +5,9 @@ repository_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 test_compose="$repository_dir/docker-compose.test.yml"
 backend_python="$repository_dir/backend/.venv/bin/python"
 backend_pytest="$repository_dir/backend/.venv/bin/pytest"
+backend_image="casaviva-backend-verify:local"
+frontend_image="casaviva-frontend-verify:local"
+test_media_dir="${TMPDIR:-/tmp}/casaviva-postgres-test-media"
 
 export POSTGRES_TEST_DB="${POSTGRES_TEST_DB:-casaviva_test}"
 if [[ "${POSTGRES_TEST_DB,,}" != *test* ]]; then
@@ -26,6 +29,11 @@ export CASAVIVA_E2E=1
 
 cleanup() {
   docker compose -f "$test_compose" down -v --remove-orphans >/dev/null 2>&1 || true
+  docker image rm "$backend_image" "$frontend_image" >/dev/null 2>&1 || true
+  if [[ -d "$test_media_dir" ]]; then
+    find "$test_media_dir" -depth -mindepth 1 -delete
+    rmdir "$test_media_dir" 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT INT TERM
 
@@ -71,6 +79,8 @@ CASAVIVA_READONLY_PASSWORD=verify-only \
 CASAVIVA_BACKUP_PASSWORD=verify-only \
 docker compose config --quiet
 docker compose -f "$test_compose" config --quiet
+docker build --file docker/backend.Dockerfile --tag "$backend_image" .
+docker build --file docker/frontend.Dockerfile --build-arg MEDIA_REMOTE_HOSTNAME=media.example.test --tag "$frontend_image" .
 
 npm run lint
 npm run typecheck

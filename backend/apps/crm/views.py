@@ -119,8 +119,9 @@ class VisitViewSet(CommercialHistoryViewSet):
         visit = create_visit(actor=request.user, **serializer.validated_data)
         return Response(self.get_serializer(visit).data, status=status.HTTP_201_CREATED)
 
+    @transaction.atomic
     def update(self, request, *args, **kwargs):
-        visit = self.get_object()
+        visit = Visit.objects.select_for_update().get(pk=self.get_object().pk)
         data = request.data.copy()
         new_status = data.pop("status", visit.status)
         if data:

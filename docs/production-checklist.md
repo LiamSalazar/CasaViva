@@ -10,7 +10,16 @@
 - [ ] `harden_database_roles` ejecutado después de migrar.
 - [ ] `seed_system` ejecutado; catálogo inicial sólo si se desea.
 - [ ] Storage S3-compatible y URLs de media comprobados.
+- [ ] `MEDIA_REMOTE_HOSTNAME` definido como argumento del build frontend.
+- [ ] Una imagen de bucket/CDN probada mediante `next/image`.
+- [ ] Bucket/CDN de media pública accesible sin URLs firmadas.
 - [ ] Founders configurados una sola vez y MFA verificado.
+- [ ] Correo público y enlaces de Facebook, Instagram y TikTok verificados.
+- [ ] Dominio definitivo y todos sus subdominios relevantes funcionan por HTTPS.
+- [ ] No existe dependencia HTTP antes de activar HSTS.
+- [ ] HSTS probado primero con `0`/periodo corto y aumentado gradualmente.
+- [ ] `includeSubDomains` considerado sólo tras validar todos los subdominios.
+- [ ] HSTS preload permanece desactivado salvo decisión explícita posterior.
 - [ ] Backup externo y restore probados.
 - [ ] Healthchecks live/ready correctos.
 - [ ] `./scripts/verify.sh` verde.

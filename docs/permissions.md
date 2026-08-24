@@ -17,3 +17,5 @@ Los grupos iniciales son `Owner` y `Founder Admin`. Los endpoints siempre vuelve
 | Django Admin técnico | Sólo si está habilitado | No | No |
 
 Todo cambio de acceso incrementa `authz_version`, elimina sesiones anteriores y deja auditoría. Founder Admin no contiene permisos `accounts.manage_*`.
+
+Los roles aportan una base mediante `Group`. Liam administra diferencias por usuario con overrides `ALLOW`/`DENY`: un `DENY` explícito prevalece sobre el permiso heredado del rol, un `ALLOW` puede añadir un permiso de negocio y, sin override, rige el grupo. La interfaz muestra origen y estado efectivo; no confunde permisos directos con acceso real. Sólo Owner con MFA reciente puede cambiar overrides.

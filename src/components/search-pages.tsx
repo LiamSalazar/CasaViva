@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -640,14 +639,7 @@ export function PropertyDetailPage({
               {property.floorplans?.length ? (
                 <section>
                   <h2>Planos</h2>
-                  <button className="floorplan">
-                    <Image
-                      src={property.floorplans[0]}
-                      alt={`Plano de ${property.title}`}
-                      width={1400}
-                      height={1000}
-                    />
-                  </button>
+                  <SecondaryGallery property={property} kind="floorplans" />
                 </section>
               ) : null}
               <section>

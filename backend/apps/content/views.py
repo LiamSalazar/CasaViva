@@ -1,7 +1,7 @@
 from rest_framework import viewsets
 from rest_framework.permissions import AllowAny
-from .models import Guide, HomeContent, LocationContent
-from .serializers import GuideSerializer, HomeContentSerializer, LocationContentSerializer
+from .models import Guide, HomeContent, LocationContent, SiteSettings
+from .serializers import GuideSerializer, HomeContentSerializer, LocationContentSerializer, PublicGuideSerializer, PublicSiteSettingsSerializer, SiteSettingsSerializer
 from apps.accounts.permissions import HasRequiredPermission, IsMfaVerifiedAdmin
 from apps.audit.services import audit_event
 from apps.common.exceptions import Conflict
@@ -10,9 +10,15 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 class PublicGuideViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Guide.objects.filter(is_published=True).order_by("-created_at", "id")
-    serializer_class = GuideSerializer
+    queryset = Guide.objects.filter(is_published=True).select_related("hero_media").order_by("-created_at", "id")
+    serializer_class = PublicGuideSerializer
     lookup_field = "slug"
+    permission_classes = [AllowAny]
+
+
+class PublicSiteSettingsViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = SiteSettings.objects.order_by("key")
+    serializer_class = PublicSiteSettingsSerializer
     permission_classes = [AllowAny]
 
 class ContentBusinessViewSet(viewsets.ModelViewSet):
@@ -57,6 +63,14 @@ class GuideViewSet(ContentBusinessViewSet):
 class HomeContentViewSet(ContentBusinessViewSet):
     queryset = HomeContent.objects.order_by("key", "id")
     serializer_class = HomeContentSerializer
+
+
+class SiteSettingsViewSet(ContentBusinessViewSet):
+    queryset = SiteSettings.objects.order_by("key", "id")
+    serializer_class = SiteSettingsSerializer
+
+    def destroy(self, request, *args, **kwargs):
+        return Response({"detail": "La información del sitio se edita; no se elimina."}, status=405)
 
 
 class LocationContentViewSet(ContentBusinessViewSet):

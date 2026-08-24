@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -15,6 +15,7 @@ import {
 import { EmptyState, Footer, PublicHeader, useToast } from "@/components/ui";
 import { formatDate, formatLocation, uid } from "@/lib/utils";
 import { inquiryService, useCasaViva } from "@/services";
+import { api } from "@/services/api";
 import type { Guide, Inquiry } from "@/types";
 import { ensureCurrentAnalyticsIdentity, trackEvent } from "@/components/analytics-provider";
 
@@ -363,7 +364,13 @@ export function GuideCard({ guide }: { guide: Guide }) {
 }
 export function GuideDetailPage({ slug }: { slug: string }) {
   const { guides, properties } = useCasaViva();
-  const guide = guides.find((g) => g.slug === slug && g.published);
+  const [guide, setGuide] = useState<Guide | null | undefined>(() => guides.find((g) => g.slug === slug && g.published));
+  useEffect(() => {
+    let active = true;
+    api.guide(slug).then((value) => { if (active) setGuide(value); }).catch(() => { if (active) setGuide(null); });
+    return () => { active = false; };
+  }, [slug]);
+  if (guide === undefined) return <><PublicHeader /><main className="container section"><p>Cargando guía…</p></main><Footer /></>;
   if (!guide)
     return (
       <>
@@ -505,6 +512,7 @@ const contactSchema = z.object({
 });
 type ContactData = z.infer<typeof contactSchema>;
 export function ContactPage() {
+  const { siteSettings } = useCasaViva();
   const { toast } = useToast();
   const [sent, setSent] = useState(false);
   const {
@@ -548,6 +556,12 @@ export function ContactPage() {
             Escríbenos para resolver una duda, pedir apoyo con tu búsqueda o
             conocer más sobre una propiedad.
           </p>
+          {siteSettings?.contact_email && <p><a className="text-link" href={`mailto:${siteSettings.contact_email}`}>{siteSettings.contact_email}</a></p>}
+          <div className="table-actions">
+            {siteSettings?.facebook_url && <a className="text-link" href={siteSettings.facebook_url} target="_blank" rel="noopener noreferrer" aria-label="Facebook de CasaViva">Facebook</a>}
+            {siteSettings?.instagram_url && <a className="text-link" href={siteSettings.instagram_url} target="_blank" rel="noopener noreferrer" aria-label="Instagram de CasaViva">Instagram</a>}
+            {siteSettings?.tiktok_url && <a className="text-link" href={siteSettings.tiktok_url} target="_blank" rel="noopener noreferrer" aria-label="TikTok de CasaViva">TikTok</a>}
+          </div>
         </div>
         <div>
           {sent ? (

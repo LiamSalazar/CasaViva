@@ -2,9 +2,10 @@ import secrets
 import uuid
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
-from django.contrib.auth.models import PermissionsMixin
+from django.contrib.auth.models import Permission, PermissionsMixin
 from django.db import models
 from django.utils import timezone
+from apps.common.models import UUIDTimeStampedModel
 
 
 class UserManager(BaseUserManager):
@@ -56,6 +57,60 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+
+    def has_perm(self, perm, obj=None):
+        """Resolve explicit overrides before permissions inherited from a role."""
+        if not self.is_active:
+            return False
+        if self.is_superuser:
+            return True
+        if obj is None and "." in perm:
+            app_label, codename = perm.split(".", 1)
+            override = self.permission_overrides.filter(
+                permission__content_type__app_label=app_label,
+                permission__codename=codename,
+            ).values_list("effect", flat=True).first()
+            if override:
+                return override == PermissionOverride.Effect.ALLOW
+        return super().has_perm(perm, obj)
+
+    def get_all_permissions(self, obj=None):
+        if not self.is_active:
+            return set()
+        permissions = set(super().get_all_permissions(obj))
+        if self.is_superuser or obj is not None:
+            return permissions
+        for app_label, codename, effect in self.permission_overrides.values_list(
+            "permission__content_type__app_label", "permission__codename", "effect"
+        ):
+            permission_key = f"{app_label}.{codename}"
+            if effect == PermissionOverride.Effect.DENY:
+                permissions.discard(permission_key)
+            else:
+                permissions.add(permission_key)
+        return permissions
+
+
+class PermissionOverride(UUIDTimeStampedModel):
+    class Effect(models.TextChoices):
+        ALLOW = "ALLOW", "Permitir"
+        DENY = "DENY", "Denegar"
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="permission_overrides")
+    permission = models.ForeignKey(Permission, on_delete=models.CASCADE, related_name="casaviva_overrides")
+    effect = models.CharField(max_length=5, choices=Effect.choices)
+    created_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="permission_overrides_created",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "permission"],
+                name="unique_user_permission_override",
+            )
+        ]
 
 
 class RecoveryCode(models.Model):

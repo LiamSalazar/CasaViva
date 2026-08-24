@@ -24,6 +24,11 @@ class SpendSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["is_voided", "voided_at", "voided_by", "void_reason"]
 
+    def validate(self, attrs):
+        if self.instance and self.instance.is_voided:
+            raise serializers.ValidationError("Este gasto fue anulado y ya no puede modificarse.")
+        return attrs
+
 class VoidSpendSerializer(serializers.Serializer):
     reason = serializers.CharField(min_length=5, max_length=500)
 

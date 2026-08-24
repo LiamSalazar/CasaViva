@@ -17,7 +17,7 @@ from apps.audit.services import audit_event
 from .models import RecoveryCode
 from .serializers import AdminUserUpdateSerializer, LoginSerializer, TotpSerializer, UserPermissionsSerializer, UserSerializer
 from .permissions import IsMfaVerifiedAdmin
-from .services import change_user_access, revoke_user_sessions
+from .services import change_user_access, managed_permissions_queryset, revoke_user_sessions
 from .security import has_recent_mfa
 
 
@@ -172,9 +172,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="permission-options")
     def permission_options(self, request):
-        permissions = Permission.objects.select_related("content_type").filter(
-            content_type__app_label__in=["catalog", "listings", "crm", "content", "analytics", "audit", "marketing"]
-        ).order_by("content_type__app_label", "codename")
+        permissions = managed_permissions_queryset().order_by("content_type__app_label", "codename")
         return Response([
             {"key": f"{permission.content_type.app_label}.{permission.codename}", "name": permission.name}
             for permission in permissions
@@ -186,12 +184,11 @@ class UserViewSet(viewsets.ModelViewSet):
         serializer = UserPermissionsSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         keys = set(serializer.validated_data["permissions"])
-        query = Permission.objects.select_related("content_type")
+        query = managed_permissions_queryset()
         permissions = [permission for permission in query if f"{permission.content_type.app_label}.{permission.codename}" in keys]
         if len(permissions) != len(keys):
             return Response({"detail": "Uno o más permisos no existen."}, status=400)
         change_user_access(request.user, user, permissions=permissions, request=request)
-        audit_event(request.user, "PERMISSION_GRANTED", user, request=request)
         return Response(self.get_serializer(user).data)
 
     @action(detail=True, methods=["post"], url_path="revoke-sessions")

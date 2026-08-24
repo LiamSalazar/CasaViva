@@ -33,6 +33,22 @@ python backend/manage.py runserver 127.0.0.1:8000
 
 `unset DATABASE_URL` hace que Django vuelva a usar el `DATABASE_URL` de `.env`, que debe apuntar a `casaviva_app`. `bootstrap_founders` solicita las cuentas administrativas; no hay correos, contraseñas ni secretos TOTP versionados.
 
+### Acceso de administradores
+
+Las cuentas Liam, Ana y Alfredo se crean al ejecutar `python backend/manage.py bootstrap_founders`; sus correos y contraseñas los define quien instala CasaViva. En el primer acceso, cada cuenta debe escanear el QR TOTP, confirmar un código y conservar sus códigos de recuperación.
+
+Para consultar sólo nombre, correo, rol, estado y estado MFA:
+
+```bash
+python backend/manage.py list_admin_users
+```
+
+Para restablecer una contraseña sin exponerla en el historial de la terminal:
+
+```bash
+python backend/manage.py reset_admin_password correo@example.com
+```
+
 En otra terminal:
 
 ```bash
@@ -118,3 +134,13 @@ Documentos: [arquitectura](docs/architecture.md), [modelo y diccionario](docs/da
 ## Preparación para producción
 
 La aplicación no obliga a elegir proveedor. Antes de desplegar: define `config.settings.production`, conecta PostgreSQL externo con SSL, configura `STORAGE_BACKEND=s3` y un bucket S3-compatible, sirve Next y `/api/` bajo HTTPS en el mismo sitio, ejecuta `migrate` con el migrator y después `harden_database_roles`, ejecuta `seed_system` y crea founders una sola vez. Sirve requests con `casaviva_app`, comprueba `/api/health/live/` y `/api/health/ready/`, configura backups externos y completa la [lista de producción](docs/production-checklist.md).
+
+Next incorpora los hosts autorizados para imágenes durante el build. Con storage/CDN remoto compila el frontend así (el hostname no es secreto):
+
+```bash
+docker build -f docker/frontend.Dockerfile \
+  --build-arg MEDIA_REMOTE_HOSTNAME=media.casaviva.mx \
+  -t casaviva-frontend .
+```
+
+Los objetos públicos deben ser accesibles mediante el bucket/CDN configurado porque las URLs no llevan firma (`AWS_QUERYSTRING_AUTH=False`). Comienza con `SECURE_HSTS_SECONDS=0`; aumenta gradualmente sólo después de verificar HTTPS y todos los subdominios.

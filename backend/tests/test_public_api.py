@@ -10,6 +10,16 @@ def test_public_listing_visibility_and_no_internal_leak(client, catalog):
     body = response.json()
     for forbidden in ["internal_notes", "internal_reference", "default_commission_rate", "created_by", "updated_by", "permissions"]:
         assert forbidden not in body
+    assert set(body) == {
+        "id", "slug", "title", "propertyType", "propertyTypeName", "sourceType", "condition",
+        "status", "published", "featured", "price", "priceMax", "currency", "priceLabel",
+        "state", "municipality", "neighborhood", "latitude", "longitude", "bedrooms",
+        "bathrooms", "fullBathrooms", "halfBathrooms", "parkingSpaces", "constructionM2",
+        "constructionAreaBasis", "landM2", "landAreaBasis", "gardenM2", "shortDescription",
+        "description", "amenities", "amenitySlugs", "developerId", "developerName",
+        "developmentId", "developmentName", "modelName", "heroImage", "gallery", "floorplans",
+        "createdAt", "updatedAt",
+    }
 
     listing = catalog["listing"]
     listing.is_published = False

@@ -1,6 +1,52 @@
 from rest_framework import serializers
 from django.db import transaction
-from .models import Guide, HomeContent, HomeHeroSlide, LocationContent
+from .models import Guide, HomeContent, HomeHeroSlide, LocationContent, SiteSettings
+
+
+class HttpUrlField(serializers.URLField):
+    def to_internal_value(self, data):
+        value = super().to_internal_value(data)
+        if value and not value.lower().startswith(("http://", "https://")):
+            raise serializers.ValidationError("Utiliza una dirección http o https válida.")
+        return value
+
+
+class PublicSiteSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SiteSettings
+        fields = ["contact_email", "facebook_url", "instagram_url", "tiktok_url"]
+
+
+class PublicGuideSerializer(serializers.ModelSerializer):
+    heroImage = serializers.SerializerMethodField()
+    published = serializers.BooleanField(source="is_published", read_only=True)
+    featured = serializers.BooleanField(source="is_featured", read_only=True)
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+
+    class Meta:
+        model = Guide
+        fields = ["id", "slug", "title", "excerpt", "content", "category", "heroImage", "published", "featured", "createdAt"]
+
+    def get_heroImage(self, obj):
+        return obj.hero_media.url if obj.hero_media_id else None
+
+
+class SiteSettingsSerializer(serializers.ModelSerializer):
+    facebook_url = HttpUrlField(required=False, allow_null=True, allow_blank=True)
+    instagram_url = HttpUrlField(required=False, allow_null=True, allow_blank=True)
+    tiktok_url = HttpUrlField(required=False, allow_null=True, allow_blank=True)
+
+    class Meta:
+        model = SiteSettings
+        fields = ["id", "key", "contact_email", "facebook_url", "instagram_url", "tiktok_url", "version"]
+        read_only_fields = ["id", "version"]
+
+    def validate(self, attrs):
+        if attrs.get("key", getattr(self.instance, "key", "main")) != "main":
+            raise serializers.ValidationError({"key": "CasaViva utiliza una única configuración principal."})
+        if self.instance is None and SiteSettings.all_objects.exists():
+            raise serializers.ValidationError("La configuración principal ya existe; edítala en lugar de crear otra.")
+        return attrs
 
 
 class HomeHeroSlideSerializer(serializers.ModelSerializer):

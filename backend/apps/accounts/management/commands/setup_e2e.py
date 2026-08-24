@@ -1,6 +1,9 @@
 import os
+from base64 import b64decode
 
 from django.conf import settings
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.core.management.base import BaseCommand, CommandError
 from django_otp.plugins.otp_totp.models import TOTPDevice
 from django.utils import timezone
@@ -8,8 +11,10 @@ from django.utils import timezone
 from apps.accounts.models import User
 from apps.accounts.services import seed_groups
 from apps.catalog.models import PropertyOffering, PropertyType
+from apps.content.models import Guide
 from apps.geo.models import Municipality
-from apps.listings.models import AvailabilityRecord, Listing, PriceRecord
+from apps.listings.models import AvailabilityRecord, Listing, ListingMedia, PriceRecord
+from apps.media_library.models import MediaAsset
 
 
 class Command(BaseCommand):
@@ -47,6 +52,20 @@ class Command(BaseCommand):
             TOTPDevice.objects.filter(user=user).delete()
             TOTPDevice.objects.create(user=user, name="Playwright", key=totp_secret, confirmed=True)
         owner_user = User.objects.get(email="liam@example.test")
+        for index in range(30):
+            Guide.objects.get_or_create(
+                slug=f"guia-publica-e2e-{index:02d}",
+                defaults={
+                    "title": f"Guía pública E2E {index:02d}",
+                    "excerpt": "Contenido editorial aislado para paginación.",
+                    "content": "Guía creada exclusivamente en casaviva_test.",
+                    "category": "hogar",
+                    "is_published": True,
+                    "published_at": timezone.now(),
+                    "created_by": owner_user,
+                    "updated_by": owner_user,
+                },
+            )
         municipality = Municipality.objects.select_related("state").first()
         if municipality:
             property_type, _ = PropertyType.objects.get_or_create(
@@ -83,4 +102,34 @@ class Command(BaseCommand):
                     AvailabilityRecord.objects.create(
                         offering=offering, status="AVAILABLE", effective_from=timezone.now(), changed_by=owner_user,
                     )
+            gallery_listing = Listing.objects.get(slug="duplex-e2e-1")
+            png = b64decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGPkEpFjYGBgYmBgYGBgAAAC5gBAXKUgWwAAAABJRU5ErkJggg=="
+            )
+            for role, media_type, filename, digest in (
+                ("HERO", "IMAGE", "e2e/property-hero.png", "1" * 64),
+                ("GALLERY", "IMAGE", "e2e/property-gallery.png", "2" * 64),
+                ("FLOORPLAN", "FLOORPLAN", "e2e/property-floorplan.png", "3" * 64),
+            ):
+                if not default_storage.exists(filename):
+                    default_storage.save(filename, ContentFile(png))
+                asset, _ = MediaAsset.objects.get_or_create(
+                    storage_key=filename,
+                    defaults={
+                        "media_type": media_type,
+                        "original_filename": filename.rsplit("/", 1)[-1],
+                        "mime_type": "image/png",
+                        "byte_size": len(png),
+                        "width": 2,
+                        "height": 2,
+                        "sha256": digest,
+                        "alt_text": f"{role.title()} E2E",
+                        "uploaded_by": owner_user,
+                    },
+                )
+                ListingMedia.objects.get_or_create(
+                    listing=gallery_listing,
+                    media=asset,
+                    defaults={"role": role, "sort_order": 0 if role == "HERO" else 1},
+                )
         self.stdout.write(self.style.SUCCESS("Usuarios E2E aislados listos."))

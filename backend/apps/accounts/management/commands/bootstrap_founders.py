@@ -24,8 +24,8 @@ class Command(BaseCommand):
         owner, founder = seed_groups()
         definitions = [
             ("LIAM", True, owner, self.value("LIAM_NAME", "Nombre de Liam: ", default="Liam")),
-            ("ANA", False, founder, "Ana"),
-            ("ALFREDO", False, founder, "Alfredo"),
+            ("ANA", False, founder, self.value("ANA_NAME", "Nombre de Ana: ", default="Ana")),
+            ("ALFREDO", False, founder, self.value("ALFREDO_NAME", "Nombre de Alfredo: ", default="Alfredo")),
         ]
         for prefix, superuser, group, name in definitions:
             email = self.value(f"{prefix}_EMAIL", f"Correo de {name}: ")
@@ -36,4 +36,6 @@ class Command(BaseCommand):
                 continue
             user = User.objects.create_user(email=email, password=password, first_name=name, is_staff=superuser, is_superuser=superuser)
             user.groups.add(group)
-            self.stdout.write(self.style.SUCCESS(f"{name}: usuario creado; MFA será obligatorio al primer acceso."))
+            self.stdout.write(self.style.SUCCESS(
+                f"Cuenta creada: {name} — {user.email} — {'Owner' if superuser else 'Founder Admin'}. MFA será obligatorio al primer acceso."
+            ))

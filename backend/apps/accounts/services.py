@@ -4,6 +4,7 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from apps.audit.services import audit_event
+from .models import PermissionOverride
 
 
 BUSINESS_PERMISSIONS = [
@@ -36,6 +37,53 @@ def revoke_user_sessions(user, except_session=None):
             session.delete()
 
 
+def managed_permissions_queryset():
+    return Permission.objects.select_related("content_type").filter(
+        content_type__app_label__in=[
+            "catalog", "listings", "crm", "content", "analytics", "audit", "marketing",
+        ]
+    )
+
+
+@transaction.atomic
+def set_effective_permissions(actor, user, desired_permissions, request=None):
+    """Persist only the differences between a role and the desired effective access."""
+    if not actor.is_superuser or not actor.has_perm("accounts.manage_permissions"):
+        raise PermissionDenied("Sólo el Owner puede modificar accesos.")
+    if user.is_superuser:
+        raise ValidationError("Los permisos del Owner no pueden limitarse mediante overrides.")
+    desired_ids = {permission.pk for permission in desired_permissions}
+    inherited_ids = set(
+        Permission.objects.filter(group__user=user).values_list("pk", flat=True)
+    )
+    managed = list(managed_permissions_queryset())
+    managed_ids = {permission.pk for permission in managed}
+    user.user_permissions.remove(*user.user_permissions.filter(pk__in=managed_ids))
+    for permission in managed:
+        desired = permission.pk in desired_ids
+        inherited = permission.pk in inherited_ids
+        if desired == inherited:
+            PermissionOverride.objects.filter(user=user, permission=permission).delete()
+        else:
+            PermissionOverride.objects.update_or_create(
+                user=user,
+                permission=permission,
+                defaults={
+                    "effect": PermissionOverride.Effect.ALLOW if desired else PermissionOverride.Effect.DENY,
+                    "created_by": actor,
+                },
+            )
+    user.authz_version += 1
+    user.save(update_fields=["authz_version", "updated_at"])
+    revoke_user_sessions(user)
+    audit_event(
+        actor, "PERMISSION_GRANTED", user,
+        new_values={"effective_permissions": sorted(f"{p.content_type.app_label}.{p.codename}" for p in desired_permissions)},
+        request=request,
+    )
+    return user
+
+
 @transaction.atomic
 def change_user_access(actor, user, *, group=None, is_active=None, permissions=None, request=None):
     if not actor.is_superuser or not actor.has_perm("accounts.manage_permissions"):
@@ -45,12 +93,15 @@ def change_user_access(actor, user, *, group=None, is_active=None, permissions=N
     before = {"is_active": user.is_active, "groups": list(user.groups.values_list("name", flat=True))}
     if is_active is not None:
         user.is_active = is_active
-    user.authz_version += 1
-    user.save(update_fields=["is_active", "authz_version", "updated_at"])
     if group is not None:
         user.groups.set([group])
     if permissions is not None:
-        user.user_permissions.set(permissions)
-    revoke_user_sessions(user)
-    audit_event(actor, "ROLE_CHANGED", user, old_values=before, new_values={"is_active": user.is_active, "groups": list(user.groups.values_list("name", flat=True))}, request=request)
+        set_effective_permissions(actor, user, permissions, request=request)
+        user.refresh_from_db()
+    else:
+        user.authz_version += 1
+        user.save(update_fields=["is_active", "authz_version", "updated_at"])
+        revoke_user_sessions(user)
+    if group is not None or is_active is not None:
+        audit_event(actor, "ROLE_CHANGED", user, old_values=before, new_values={"is_active": user.is_active, "groups": list(user.groups.values_list("name", flat=True))}, request=request)
     return user

@@ -1,4 +1,4 @@
-import type { ApiPage, Development, Guide, Location, Property, PropertyTypeOption, SearchOptions } from "@/types";
+import type { ApiPage, Development, Guide, Location, Property, PropertyTypeOption, SearchOptions, SiteSettings } from "@/types";
 
 const PLACEHOLDER = "/casaviva-placeholder.svg";
 
@@ -10,6 +10,7 @@ function csrfToken() {
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path.startsWith("/api/") ? path : `/api/v1/${path.replace(/^\//, "")}`, {
     ...init,
+    cache: init.cache ?? "no-store",
     credentials: "include",
     headers: {
       ...(init.body && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
@@ -216,9 +217,14 @@ export const api = {
     const states = await apiFetch<Array<{ id: string; name: string; municipalities: Array<{ id: string; name: string; slug?: string; description: string; heroImage?: string; is_featured: boolean; latitude?: string; longitude?: string; content_id?: string }> }>>("/api/v1/public/locations/");
     return states.flatMap((s) => s.municipalities.map((m): Location => ({ id: m.id, stateId: s.id, slug: m.slug || m.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-"), name: m.name, state: s.name, description: m.description || "", heroImage: m.heroImage || PLACEHOLDER, featured: m.is_featured, latitude: numberOrUndefined(m.latitude), longitude: numberOrUndefined(m.longitude), contentId: m.content_id, hasContent: Boolean(m.content_id) })));
   },
-  guides: async () => {
-    const data = await apiFetch<{ results: Guide[] }>("/api/v1/public/guides/");
-    return data.results.map((g) => ({ ...g, heroImage: g.heroImage || PLACEHOLDER }));
+  guides: async () => (await fetchAllPages<Guide>("/api/v1/public/guides/")).map((g) => ({ ...g, heroImage: g.heroImage || PLACEHOLDER })),
+  guide: async (slug: string) => {
+    const guide = await apiFetch<Guide>(`/api/v1/public/guides/${encodeURIComponent(slug)}/`);
+    return { ...guide, heroImage: guide.heroImage || PLACEHOLDER };
+  },
+  siteSettings: async () => {
+    const page = await apiFetch<ApiPage<SiteSettings>>("/api/v1/public/site-settings/");
+    return page.results[0] || null;
   },
   adminListings: async () => {
     return (await fetchAllPages<Record<string, any>>("/api/v1/admin/properties/?page_size=100")).map(mapProperty);

@@ -1,3 +1,4 @@
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
@@ -218,3 +219,23 @@ def test_sale_status_transitions_are_persisted_coherent_audited_and_not_deletabl
     assert admin_client.delete(f"/api/v1/admin/visits/{Visit.objects.create(lead=lead, offering=catalog['offering'], scheduled_at=timezone.now()).id}/").status_code == 405
     inquiry = Inquiry.objects.create(lead=lead, listing=catalog["listing"], channel="MANUAL")
     assert admin_client.delete(f"/api/v1/admin/inquiries/{inquiry.id}/").status_code == 405
+
+
+@pytest.mark.django_db
+def test_visit_update_rolls_back_other_fields_when_status_transition_is_invalid(admin_client, catalog):
+    monday = timezone.now().replace(hour=10, minute=0, second=0, microsecond=0)
+    tuesday = monday + timedelta(days=1)
+    lead = Lead.objects.create(first_name="Visita atómica")
+    visit = Visit.objects.create(
+        lead=lead, offering=catalog["offering"], scheduled_at=monday,
+        status=Visit.Status.COMPLETED, completed_at=monday,
+    )
+    response = admin_client.patch(
+        f"/api/v1/admin/visits/{visit.id}/",
+        {"scheduled_at": tuesday.isoformat(), "status": Visit.Status.CANCELLED},
+        format="json",
+    )
+    assert response.status_code == 400
+    visit.refresh_from_db()
+    assert visit.scheduled_at == monday
+    assert visit.status == Visit.Status.COMPLETED
