@@ -72,6 +72,7 @@ export function PropertiesPage() {
   const [selected, setSelected] = useState<string>();
   const [remote, setRemote] = useState<Property[]>([]);
   const [remoteCount, setRemoteCount] = useState(0);
+  const [facets, setFacets] = useState<import("@/types").SearchFacets>({ property_types: [], conditions: [] });
   const [loading, setLoading] = useState(true);
   const [searchOptions, setSearchOptions] = useState<SearchOptions>({ property_types: [], amenities: [], locations: [] });
   useEffect(() => { api.searchOptions().then(setSearchOptions).catch(() => setSearchOptions({ property_types: [], amenities: [], locations: [] })); }, []);
@@ -107,7 +108,7 @@ export function PropertiesPage() {
     });
     params.set("ordering", ({ recent: "newest", "price-asc": "price_asc", "price-desc": "price_desc", "area-desc": "area_desc" } as const)[sort]);
     queueMicrotask(() => { if (!cancelled) setLoading(true); });
-    api.publicListingPage(params.toString()).then((page) => { if (!cancelled) { const municipalityName = source.get("municipality") ? deslug(source.get("municipality")!, municipalities) : undefined; const municipalityId = locations.find((item) => item.name === municipalityName)?.id; setRemote(page.results); setRemoteCount(page.count); void trackEvent("search_performed", { municipality_ids: municipalityId ? [municipalityId] : undefined, price_min: Number(source.get("minPrice")) || undefined, price_max: Number(source.get("maxPrice")) || undefined, bedrooms_min: Number(source.get("minBedrooms")) || undefined, property_type_ids: source.get("propertyType") ? [source.get("propertyType")] : undefined, result_count: page.count }); } }).finally(() => { if (!cancelled) setLoading(false); });
+    api.publicListingPage(params.toString()).then((page) => { if (!cancelled) { const municipalityName = source.get("municipality") ? deslug(source.get("municipality")!, municipalities) : undefined; const municipalityId = locations.find((item) => item.name === municipalityName)?.id; setRemote(page.results); setRemoteCount(page.count); setFacets(page.facets || { property_types: [], conditions: [] }); void trackEvent("search_performed", { municipality_ids: municipalityId ? [municipalityId] : undefined, price_min: Number(source.get("minPrice")) || undefined, price_max: Number(source.get("maxPrice")) || undefined, bedrooms_min: Number(source.get("minBedrooms")) || undefined, property_type_codes: source.get("propertyType") ? [source.get("propertyType")] : undefined, amenity_slugs: source.get("amenities")?.split(",").filter(Boolean), result_count: page.count }); } }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [queryString, sort, municipalities, locations]);
   const results = remote;
@@ -117,8 +118,8 @@ export function PropertiesPage() {
     else q.delete(key);
     router.push(`/propiedades?${q.toString()}`);
   };
-  const typeCounts = Object.fromEntries(searchOptions.property_types.map((type) => [type.code, results.filter((property) => property.propertyType === type.code).length]));
-  const counts = { new: results.filter((p) => p.condition === "new").length, used: results.filter((p) => p.condition === "used").length };
+  const typeCounts = Object.fromEntries(facets.property_types.map((type) => [type.offering__property_type__code, type.count]));
+  const counts = Object.fromEntries(facets.conditions.map((item) => [item.offering__condition.toLowerCase(), item.count])) as { new?: number; used?: number };
   return (
     <>
       <SearchHeader />
@@ -188,13 +189,13 @@ export function PropertiesPage() {
               className="text-link"
               onClick={() => setParam("condition", "new")}
             >
-              Casas nuevas {counts.new}
+              Propiedades nuevas {counts.new || 0}
             </button>
             <button
               className="text-link"
               onClick={() => setParam("condition", "used")}
             >
-              Casas usadas {counts.used}
+              Propiedades usadas {counts.used || 0}
             </button>
           </div>
         </div>
@@ -280,7 +281,7 @@ export function PropertiesPage() {
         locations={locations.map((l) => ({ name: l.name, state: l.state }))}
         developments={developments.map((d) => ({ id: d.id, name: d.name }))}
         typeOptions={searchOptions.property_types.map((type) => [type.name, type.code])}
-        amenities={searchOptions.amenities.map((amenity) => amenity.name)}
+        amenities={searchOptions.amenities}
       />
       <Footer />
     </>
@@ -304,7 +305,7 @@ function SearchFilters({
   locations: { name: string; state: string }[];
   developments: { id: string; name: string }[];
   typeOptions: [string, PropertyType][];
-  amenities: string[];
+  amenities: Array<{ id: string; slug: string; name: string; category: string }>;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<PropertyFilters>(initial);
@@ -449,20 +450,20 @@ function SearchFilters({
           <strong>Amenidades</strong>
           <div className="filter-checks">
             {amenities.map((a) => (
-              <label className="check-chip" key={a}>
+              <label className="check-chip" key={a.id}>
                 <input
                   type="checkbox"
-                  checked={draft.amenities?.includes(a) || false}
+                  checked={draft.amenities?.includes(a.slug) || draft.amenities?.includes(a.name) || false}
                   onChange={(e) =>
                     update(
                       "amenities",
                       e.target.checked
-                        ? [...(draft.amenities || []), a]
-                        : (draft.amenities || []).filter((x) => x !== a),
+                        ? [...(draft.amenities || []).filter((x) => x !== a.name), a.slug]
+                        : (draft.amenities || []).filter((x) => x !== a.slug && x !== a.name),
                     )
                   }
                 />
-                <span>{a}</span>
+                <span>{a.name}</span>
               </label>
             ))}
           </div>

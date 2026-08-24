@@ -1,6 +1,10 @@
 # Business Intelligence
 
-`/administracion/bi` presenta visitantes, sesiones, fichas vistas, consultas, visitas y ventas contra el periodo anterior, además de tráfico diario, embudo, inventario y resultados por propiedad. Incluye demanda de búsquedas, búsquedas sin resultados, filtros, atribución por source/medium/campaign/content, gasto y costos, valor/comisiones/tiempo de cierre e información factual para decisiones. No hay scores ni datos inventados; sin denominador o gasto se muestra `—`.
+`/administracion/bi` presenta visitantes, sesiones, fichas vistas, consultas, visitas y ventas contra el periodo anterior, además de tráfico diario, inventario y resultados por propiedad. Distingue visitas programadas, realizadas, canceladas y no-show; la conversión efectiva usa sólo `COMPLETED`. "Adiciones a favoritos" significa eventos `favorite_added`, no favoritos actuales. No hay scores ni datos inventados; sin denominador o gasto se muestra `—`.
+
+"Actividad por etapa" cuenta hechos del periodo y no afirma que pertenezcan a las mismas personas. La cohorte parte de leads adquiridos en el periodo. Marketing separa adquisición por campaña con horizonte 30/60/90 días o lifetime de ventas cerradas en el periodo por origen first-touch, aunque la sesión ocurriera antes.
+
+El gasto existe a nivel campaña/fecha y se suma una sola vez. El desglose source/medium/content muestra conversiones, pero gasto `—`: no se reparte ni duplica. Gastos anulados no entran en BI.
 
 Los contratos HTTP son `/api/v1/admin/bi/overview/`, `listings/`, `searches/`, `marketing/`, `sales/` y `decisions/`. Todos exigen MFA y `analytics.view_bi`, aceptan `days` entre 1 y 366 y trabajan sobre agregados acotados.
 

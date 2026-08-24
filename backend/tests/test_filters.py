@@ -48,6 +48,7 @@ def test_public_listing_filters_cover_relations_ranges_and_all_amenities(client,
         {"price_min": "1200000"}, {"price_max": "1100000"}, {"bedrooms_min": "3"},
         {"bathrooms_min": "2"}, {"construction_area": "75"}, {"land_area": "90"},
         {"amenities": "Jardín,Seguridad"}, {"query": "Casa Modelo"},
+        {"amenities": "jardin-filter,seguridad-filter"},
     ]
     for params in accepted:
         response = client.get("/api/v1/public/listings/", params)
@@ -56,6 +57,25 @@ def test_public_listing_filters_cover_relations_ranges_and_all_amenities(client,
 
     assert catalog["listing"].slug not in slugs(client.get("/api/v1/public/listings/", {"bedrooms_min": 4}))
     assert catalog["listing"].slug not in slugs(client.get("/api/v1/public/listings/", {"amenities": "Jardín,Alberca"}))
+
+
+@pytest.mark.django_db
+def test_public_facets_count_the_complete_filtered_queryset(client, catalog):
+    catalog["offering"].condition = "NEW"
+    catalog["offering"].save()
+    apartment = PropertyType.objects.create(code="apartment", name="Departamento")
+    for index in range(30):
+        offering = PropertyOffering.objects.create(source_type="DEVELOPER", condition="USED", development_model=catalog["link"], property_type=apartment)
+        PriceRecord.objects.create(offering=offering, price_type="FIXED", amount_min=900000, effective_from=timezone.now())
+        AvailabilityRecord.objects.create(offering=offering, status="AVAILABLE", effective_from=timezone.now())
+        Listing.objects.create(offering=offering, title=f"Departamento {index}", slug=f"departamento-facet-{index}", is_published=True, published_at=timezone.now())
+    response = client.get("/api/v1/public/listings/")
+    assert response.status_code == 200
+    assert len(response.data["results"]) == 24
+    by_type = {row["offering__property_type__code"]: row["count"] for row in response.data["facets"]["property_types"]}
+    by_condition = {row["offering__condition"]: row["count"] for row in response.data["facets"]["conditions"]}
+    assert by_type == {"apartment": 30, "house": 1}
+    assert by_condition == {"NEW": 1, "USED": 30}
 
 
 @pytest.mark.django_db

@@ -25,6 +25,7 @@ import {
   CalendarDays,
   Handshake,
   ShieldCheck,
+  Megaphone,
 } from "lucide-react";
 import type {
   Development,
@@ -62,7 +63,8 @@ const adminNav = [
   ["Clientes", "/administracion/clientes", Users],
   ["Visitas", "/administracion/visitas", CalendarDays],
   ["Ventas", "/administracion/ventas", Handshake],
-  ["Marketing y BI", "/administracion/bi", BarChart3],
+  ["Marketing", "/administracion/marketing", Megaphone],
+  ["Resultados", "/administracion/bi", BarChart3],
   ["Historial", "/administracion/auditoria", ShieldCheck],
 ] as const;
 export function AdminHeader({ title }: { title: string }) {
@@ -124,13 +126,13 @@ export function AdminLayout({
   title: string;
   children: ReactNode;
 }) {
-  const { adminAuthenticated, hydrated, refreshAdmin } = useCasaViva();
+  const { adminAuthenticated, adminInitialized, hydrated, refreshAdmin } = useCasaViva();
   const router = useRouter();
   useEffect(() => {
     if (hydrated && !adminAuthenticated) router.replace("/administracion/acceso");
-    if (hydrated && adminAuthenticated) void refreshAdmin();
-  }, [hydrated, adminAuthenticated, router, refreshAdmin]);
-  if (!hydrated || !adminAuthenticated)
+    if (hydrated && adminAuthenticated && !adminInitialized) void refreshAdmin();
+  }, [hydrated, adminAuthenticated, adminInitialized, router, refreshAdmin]);
+  if (!hydrated || !adminAuthenticated || !adminInitialized)
     return (
       <div className="empty-state">
         <p>Cargando administración…</p>
@@ -1196,10 +1198,10 @@ export function AdminGuidesPage() {
         onClose={() => setRemove(undefined)}
         title="¿Eliminar esta guía?"
         description="La guía se archivará y dejará de estar disponible públicamente."
-        onConfirm={() => {
+        onConfirm={async () => {
           if (remove) {
-            deleteGuide(remove.id);
-            toast("Guía archivada");
+            try { await deleteGuide(remove.id); toast("Guía archivada"); setRemove(undefined); }
+            catch (error) { toast(error instanceof Error ? error.message : "No fue posible archivar la guía"); }
           }
         }}
       />
@@ -1211,6 +1213,8 @@ export function GuideFormPage({ id }: { id?: string }) {
   const existing = guides.find((g) => g.id === id);
   const router = useRouter();
   const { toast } = useToast();
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [x, setX] = useState<Guide>(() =>
     existing
       ? structuredClone(existing)
@@ -1221,8 +1225,7 @@ export function GuideFormPage({ id }: { id?: string }) {
           excerpt: "",
           content: "",
           category: "zonas",
-          heroImage:
-            "https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1800&q=86",
+          heroImage: "/casaviva-placeholder.svg",
           published: false,
           featured: false,
           createdAt: new Date().toISOString(),
@@ -1260,11 +1263,7 @@ export function GuideFormPage({ id }: { id?: string }) {
               ["Mercado", "mercado"],
             ]}
           />
-          <Text
-            label="Imagen"
-            value={x.heroImage}
-            onChange={(v) => u("heroImage", v)}
-          />
+          <label className="field"><span>Imagen principal</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploading} onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setUploading(true); try { const form = new FormData(); form.append("file", file); form.append("media_type", "IMAGE"); form.append("alt_text", x.title); const asset = await apiFetch<{ id: string; url: string }>("/api/v1/admin/media/", { method: "POST", body: form }); setX((current) => ({ ...current, heroImage: asset.url, heroMediaId: asset.id })); toast("Imagen cargada"); } catch (error) { toast(error instanceof Error ? error.message : "No fue posible cargar la imagen"); } finally { setUploading(false); } }} /><small>{uploading ? "Cargando imagen…" : "JPG, PNG o WebP"}</small></label>
           <Area
             label="Extracto"
             value={x.excerpt}
@@ -1296,7 +1295,8 @@ export function GuideFormPage({ id }: { id?: string }) {
         </Link>
         <button
           className="button"
-          onClick={() => {
+          disabled={saving}
+          onClick={async () => {
             if (
               !x.title ||
               !x.slug ||
@@ -1305,12 +1305,17 @@ export function GuideFormPage({ id }: { id?: string }) {
               toast("Revisa el título y slug");
               return;
             }
-            guideService.save(x);
-            toast(existing ? "Cambios guardados" : "Guía creada");
-            router.push("/administracion/guias");
+            setSaving(true);
+            try {
+              await guideService.save(x);
+              toast(existing ? "Cambios guardados" : "Guía creada");
+              router.push("/administracion/guias");
+            } catch (error) {
+              toast(error instanceof Error ? error.message : "No fue posible guardar la guía");
+            } finally { setSaving(false); }
           }}
         >
-          Guardar guía
+          {saving ? "Guardando…" : "Guardar guía"}
         </button>
       </div>
     </AdminLayout>
@@ -1318,9 +1323,16 @@ export function GuideFormPage({ id }: { id?: string }) {
 }
 
 export function AdminContentPage() {
-  const { homeContent, properties, locations, developments } = useCasaViva();
-  const [x, setX] = useState<HomeContent>(() => structuredClone(homeContent));
+  const { homeContent } = useCasaViva();
+  const contentKey = `${homeContent.id || "new"}:${homeContent.version || 0}:${homeContent.featuredPropertyIds.join(",")}:${homeContent.featuredLocationIds.join(",")}:${homeContent.featuredDevelopmentIds.join(",")}`;
+  return <AdminContentEditor key={contentKey} initialContent={homeContent} />;
+}
+
+function AdminContentEditor({ initialContent }: { initialContent: HomeContent }) {
+  const { properties, locations, developments } = useCasaViva();
+  const [x, setX] = useState<HomeContent>(() => structuredClone(initialContent));
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const { toast } = useToast();
   const toggle = (
     key:
@@ -1338,10 +1350,14 @@ export function AdminContentPage() {
   return (
     <AdminLayout title="Inicio / Hero">
       <AdminTitle title="Contenido de inicio" />
+      <FormSection title="Encabezado">
+        <div className="admin-form-grid"><Text label="Antetítulo" value={x.heroEyebrow} onChange={(value) => setX((current) => ({ ...current, heroEyebrow: value }))} /><Text label="Título" value={x.heroTitle} onChange={(value) => setX((current) => ({ ...current, heroTitle: value }))} /></div>
+      </FormSection>
       <FormSection title="Hero slides">
         <p className="muted">
           Activa y ordena las propiedades que encabezarán el inicio.
         </p>
+        <button className="button secondary" type="button" disabled={!properties.length} onClick={() => { const property = properties.find((candidate) => !x.heroSlides.some((slide) => slide.propertyId === candidate.id)) || properties[0]; if (!property) return; setX((current) => ({ ...current, heroSlides: [...current.heroSlides, { id: `new-${Date.now()}`, propertyId: property.id, eyebrow: property.developmentName || property.municipality || "Propiedad", title: property.title, subtitle: property.shortDescription, order: current.heroSlides.length, active: true }] })); }}>Añadir slide</button>
         {x.heroSlides.map((s, i) => (
           <div className="admin-list-row" key={s.id}>
             <select
@@ -1372,6 +1388,7 @@ export function AdminContentPage() {
                 }))
               }
             />
+            <input aria-label="Subtítulo del slide" value={s.subtitle} onChange={(e) => setX((a) => ({ ...a, heroSlides: a.heroSlides.map((v, n) => n === i ? { ...v, subtitle: e.target.value } : v) }))} />
             <input
               type="number"
               value={s.order}
@@ -1399,6 +1416,7 @@ export function AdminContentPage() {
               />{" "}
               Activo
             </label>
+            <button type="button" className="icon-button" aria-label="Quitar slide" onClick={() => setX((current) => ({ ...current, heroSlides: current.heroSlides.filter((_, index) => index !== i) }))}><Trash2 size={16} /></button>
           </div>
         ))}
       </FormSection>
@@ -1430,6 +1448,7 @@ export function AdminContentPage() {
             value={x.editorialTitle}
             onChange={(v) => setX((a) => ({ ...a, editorialTitle: v }))}
           />
+          <label className="field"><span>Imagen editorial</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploading} onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setUploading(true); try { const form = new FormData(); form.append("file", file); form.append("media_type", "IMAGE"); form.append("alt_text", x.editorialTitle); const asset = await apiFetch<{ id: string; url: string }>("/api/v1/admin/media/", { method: "POST", body: form }); setX((current) => ({ ...current, editorialImage: asset.url, editorialMediaId: asset.id })); toast("Imagen cargada"); } catch (error) { toast(error instanceof Error ? error.message : "No fue posible cargar la imagen"); } finally { setUploading(false); } }} /><small>{uploading ? "Cargando imagen…" : "JPG, PNG o WebP"}</small></label>
           <Area
             label="Descripción"
             value={x.editorialBody}

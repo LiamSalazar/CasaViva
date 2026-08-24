@@ -68,7 +68,7 @@ Todas las entidades editables anteriores incluyen `version` para optimistic lock
 | --- | --- | --- | --- |
 | `crm_lead` | nombre, email?, teléfono raw/normalizado?, `status`, owner?, fuentes? | varios | Cliente potencial archivables; versión optimista. |
 | `crm_leadstagehistory` | `lead_id`, `stage`, `started_at`, `ended_at?`, `changed_by_id?` | FK/tiempo | Un tramo vigente; base del embudo y tiempos. |
-| `crm_inquiry` | `lead_id`, `listing_id?`, `channel`, `message?`, `session_id?`, `status`, `assigned_to_id?` | varios | Consulta; listing SET NULL conserva CRM. |
+| `crm_inquiry` | `lead_id`, `listing_id?`, `channel`, `intent`, `subject?`, `message?`, `session_id?`, `status`, `assigned_to_id?` | varios | Distingue información, solicitud de visita y contacto general; listing SET NULL conserva CRM. |
 | `crm_leadinterest` | lead, offering, tipo, fecha | FKs | VIEWED, FAVORITED, INQUIRED, VISITED. |
 | `crm_visit` | lead, offering, agenda, estado, cierre?, responsable?, notas? | varios | Actividad comercial. |
 | `crm_sale` | lead, offering, listing?, precio, comisión?, cierre, estado, actor | numeric/FKs | PROTECT sobre historia de venta. |
@@ -83,8 +83,9 @@ Todas las entidades editables anteriores incluyen `version` para optimistic lock
 | `analytics_websession` | visitante, lead?, tiempos, UTM opcionales, referrer?, landing, device?, consentimiento | varios | Sesión atribuible. |
 | `analytics_analyticsevent` | tiempos, nombre, versión, visitante/sesión, relaciones nullable, path?, `properties`, snapshots | JSONB/FKs | Evento controlado; listing SET NULL conserva snapshots. |
 | `marketing_marketingcampaign` | nombre, UTM campaign, canal, fechas, activo, notas? | varios | Campaña administrable. |
-| `marketing_marketingspend` | campaña, fecha, amount, currency | numeric | Gasto manual no negativo. |
+| `marketing_marketingspend` | campaña, fecha, amount, currency, `is_voided`, actor/fecha/motivo | numeric | Gasto manual MXN no negativo; anulación conserva historia y BI la excluye. |
 | `content_homecontent` | key, textos, media editorial? | texto/FK | Contenido editable del home. |
+| `content_homeheroslide` | home, listing, overrides?, orden, activo | FKs/texto | Slides persistentes y reordenables; pareja home/listing única. |
 | `content_guide` | slug, título, extracto, contenido, categoría, media?, flags, publicación? | texto/FK | Guías públicas administrables. |
 | `content_locationcontent` | `municipality_id`, `slug`, descripción, media?, destacado, latitud?, longitud? | UUID/text/decimal | Contenido editorial 1:1 de una ubicación; no contamina el catálogo geográfico. |
 

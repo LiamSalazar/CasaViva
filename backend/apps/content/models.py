@@ -16,6 +16,20 @@ class HomeContent(BusinessModel):
         permissions = [("manage_content", "Puede administrar contenido público")]
 
 
+class HomeHeroSlide(BusinessModel):
+    home_content = models.ForeignKey(HomeContent, on_delete=models.PROTECT, related_name="hero_slides")
+    listing = models.ForeignKey("listings.Listing", on_delete=models.PROTECT, related_name="home_hero_slides")
+    eyebrow_override = models.CharField(max_length=120, null=True, blank=True)
+    title_override = models.CharField(max_length=240, null=True, blank=True)
+    subtitle_override = models.CharField(max_length=500, null=True, blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True, db_index=True)
+
+    class Meta:
+        ordering = ["sort_order", "created_at"]
+        constraints = [models.UniqueConstraint(fields=["home_content", "listing"], name="unique_home_listing_slide")]
+
+
 class Guide(BusinessModel):
     slug = models.SlugField(max_length=230, unique=True)
     title = models.CharField(max_length=240)

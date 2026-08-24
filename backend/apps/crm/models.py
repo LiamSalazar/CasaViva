@@ -50,6 +50,14 @@ class LeadStageHistory(UUIDTimeStampedModel):
 
 
 class Inquiry(UUIDTimeStampedModel):
+    class Intent(models.TextChoices):
+        INFORMATION = "INFORMATION", "Solicitud de información"
+        VISIT_REQUEST = "VISIT_REQUEST", "Solicitud de visita"
+        GENERAL_CONTACT = "GENERAL_CONTACT", "Contacto general"
+    class Subject(models.TextChoices):
+        PROPERTY_INFORMATION = "PROPERTY_INFORMATION", "Información de una propiedad"
+        SEARCH_ASSISTANCE = "SEARCH_ASSISTANCE", "Ayuda con mi búsqueda"
+        GENERAL_COMMENT = "GENERAL_COMMENT", "Comentario general"
     class Channel(models.TextChoices):
         WEB = "WEB", "Sitio web"
         WHATSAPP = "WHATSAPP", "WhatsApp"
@@ -65,6 +73,8 @@ class Inquiry(UUIDTimeStampedModel):
     lead = models.ForeignKey(Lead, on_delete=models.PROTECT, related_name="inquiries")
     listing = models.ForeignKey(Listing, null=True, blank=True, on_delete=models.SET_NULL, related_name="inquiries")
     channel = models.CharField(max_length=15, choices=Channel.choices)
+    intent = models.CharField(max_length=20, choices=Intent.choices, default=Intent.INFORMATION, db_index=True)
+    subject = models.CharField(max_length=30, choices=Subject.choices, null=True, blank=True)
     message = models.TextField(null=True, blank=True)
     session_id = models.UUIDField(null=True, blank=True)
     status = models.CharField(max_length=15, choices=Status.choices, default=Status.NEW)

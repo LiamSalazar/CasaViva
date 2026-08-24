@@ -55,7 +55,7 @@ class GuideViewSet(ContentBusinessViewSet):
             )
 
 class HomeContentViewSet(ContentBusinessViewSet):
-    queryset = HomeContent.objects.all()
+    queryset = HomeContent.objects.order_by("key", "id")
     serializer_class = HomeContentSerializer
 
 

@@ -64,6 +64,19 @@ def test_privacy_consent_requires_and_records_active_notice(client, catalog):
 
 
 @pytest.mark.django_db
+def test_inquiry_intent_subject_and_consent_purpose_are_preserved(client, catalog):
+    call_command("seed_system")
+    general = client.post("/api/v1/public/inquiries/", {"first_name": "General", "email": "general-intent@example.test", "privacy_consent": True, "intent": "GENERAL_CONTACT", "subject": "SEARCH_ASSISTANCE"}, format="json")
+    visit = client.post("/api/v1/public/inquiries/", {"first_name": "Visita", "email": "visit-intent@example.test", "privacy_consent": True, "intent": "VISIT_REQUEST", "listing_slug": catalog["listing"].slug}, format="json")
+    assert general.status_code == visit.status_code == 201
+    assert Inquiry.objects.get(pk=general.data["id"]).subject == "SEARCH_ASSISTANCE"
+    assert Inquiry.objects.get(pk=visit.data["id"]).intent == "VISIT_REQUEST"
+    assert ConsentRecord.objects.get(lead__email="general-intent@example.test").purpose == "GENERAL_CONTACT"
+    assert ConsentRecord.objects.get(lead__email="visit-intent@example.test").purpose == "VISIT_REQUEST"
+    assert Visit.objects.count() == 0
+
+
+@pytest.mark.django_db
 def test_visit_crud_and_sale_preserves_financial_snapshot(admin_client, owner, catalog):
     lead = Lead.objects.create(first_name="Comprador", status="NEGOTIATING")
     LeadStageHistory.objects.create(lead=lead, stage="NEGOTIATING", started_at=timezone.now())

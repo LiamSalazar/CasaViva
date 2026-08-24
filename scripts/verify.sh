@@ -58,6 +58,7 @@ DJANGO_SETTINGS_MODULE=config.settings.test "$backend_python" manage.py spectacu
 
 DJANGO_SETTINGS_MODULE=config.settings.production \
 DJANGO_SECRET_KEY='verify-only-not-a-real-secret-5d377ab8dd7c90b3bd83112d5375fa57' \
+DATABASE_URL='postgresql://casaviva_app:casaviva-app-test@127.0.0.1:55432/casaviva_test' \
 ALLOWED_HOSTS='example.test' \
 CSRF_TRUSTED_ORIGINS='https://example.test' \
 "$backend_python" manage.py check --deploy
@@ -75,7 +76,8 @@ npm run lint
 npm run typecheck
 npm run build
 npm audit --omit=dev
-"$backend_python" -m pip_audit -r backend/requirements/base.txt
+"$backend_python" -m pip_audit -r backend/requirements/production.txt
+./scripts/secret-scan.sh
 
 export POSTGRES_TEST_USER=casaviva_app
 export POSTGRES_TEST_PASSWORD=casaviva-app-test

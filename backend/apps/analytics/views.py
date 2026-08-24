@@ -1,5 +1,5 @@
 from datetime import datetime, time, timedelta
-from django.db.models import Count, Sum, Q
+from django.db.models import Count, Sum, Q, OuterRef, Subquery
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -103,14 +103,18 @@ def bi_overview(request):
             "sessions": WebSession.objects.filter(started_at__gte=a, started_at__lt=b).count(),
             "listing_views": AnalyticsEvent.objects.filter(occurred_at__gte=a, occurred_at__lt=b, event_name="listing_viewed").count(),
             "inquiries": Inquiry.objects.filter(created_at__gte=a, created_at__lt=b).count(),
-            "visits": Visit.objects.filter(created_at__gte=a, created_at__lt=b).count(),
+            "visits": Visit.objects.filter(status=Visit.Status.COMPLETED, completed_at__gte=a, completed_at__lt=b).count(),
+            "visits_scheduled": Visit.objects.filter(status=Visit.Status.SCHEDULED, scheduled_at__gte=a, scheduled_at__lt=b).count(),
+            "visits_completed": Visit.objects.filter(status=Visit.Status.COMPLETED, completed_at__gte=a, completed_at__lt=b).count(),
+            "visits_cancelled": Visit.objects.filter(status=Visit.Status.CANCELLED, scheduled_at__gte=a, scheduled_at__lt=b).count(),
+            "visits_no_show": Visit.objects.filter(status=Visit.Status.NO_SHOW, scheduled_at__gte=a, scheduled_at__lt=b).count(),
             "sales": Sale.objects.filter(closed_at__gte=a, closed_at__lt=b, status="CLOSED").count(),
         }
     current, prior = counts(start, end), counts(previous, start)
     traffic = list(WebSession.objects.filter(started_at__gte=start, started_at__lt=end).annotate(date=TruncDate("started_at")).values("date").annotate(sessions=Count("id"), visitors=Count("visitor_id", distinct=True)).order_by("date"))
     funnel = []
     previous_value = None
-    for label, key in [("Sesiones", "sessions"), ("Propiedades vistas", "listing_views"), ("Consultas", "inquiries"), ("Visitas", "visits"), ("Ventas", "sales")]:
+    for label, key in [("Sesiones", "sessions"), ("Propiedades vistas", "listing_views"), ("Consultas", "inquiries"), ("Visitas realizadas", "visits_completed"), ("Ventas cerradas", "sales")]:
         value = current[key]
         funnel.append({"label": label, "value": value, "conversion_from_previous": round(value / previous_value * 100, 2) if previous_value else None})
         previous_value = value
@@ -118,13 +122,13 @@ def bi_overview(request):
     lead_ids = Lead.objects.filter(created_at__gte=start, created_at__lt=end).values_list("id", flat=True)
     cohort = {
         "leads": Lead.objects.filter(id__in=lead_ids).count(),
-        "with_visit": Lead.objects.filter(id__in=lead_ids, visits__isnull=False).distinct().count(),
+        "with_visit": Lead.objects.filter(id__in=lead_ids, visits__status=Visit.Status.COMPLETED).distinct().count(),
         "with_closed_sale": Lead.objects.filter(id__in=lead_ids, sales__status="CLOSED").distinct().count(),
     }
     return Response({
         "period": {"start": start, "end": end}, "current": current, "previous": prior,
         "traffic": traffic, "funnel": funnel, "funnel_kind": "period_activity",
-        "funnel_description": "Actividad registrada en cada etapa durante el periodo; no representa una cohorte única.",
+        "funnel_description": "Actividad registrada en cada etapa durante el periodo. Las visitas son sólo las marcadas como realizadas; no representa una cohorte única.",
         "lead_cohort": cohort, "inventory": inventory,
     })
 
@@ -135,16 +139,17 @@ def bi_listing_performance(request):
     start, end, _ = period_bounds(request)
     rows = Listing.all_objects.annotate(
         views=Count("analytics_events", filter=Q(analytics_events__event_name="listing_viewed", analytics_events__occurred_at__gte=start, analytics_events__occurred_at__lt=end), distinct=True),
-        favorites=Count("analytics_events", filter=Q(analytics_events__event_name="favorite_added", analytics_events__occurred_at__gte=start, analytics_events__occurred_at__lt=end), distinct=True),
+        favorite_additions=Count("analytics_events", filter=Q(analytics_events__event_name="favorite_added", analytics_events__occurred_at__gte=start, analytics_events__occurred_at__lt=end), distinct=True),
         inquiries_count=Count("inquiries", filter=Q(inquiries__created_at__gte=start, inquiries__created_at__lt=end), distinct=True),
-        visits_count=Count("offering__visits", filter=Q(offering__visits__created_at__gte=start, offering__visits__created_at__lt=end), distinct=True),
+        visits_scheduled=Count("offering__visits", filter=Q(offering__visits__scheduled_at__gte=start, offering__visits__scheduled_at__lt=end), distinct=True),
+        visits_completed=Count("offering__visits", filter=Q(offering__visits__status=Visit.Status.COMPLETED, offering__visits__completed_at__gte=start, offering__visits__completed_at__lt=end), distinct=True),
         sales_count=Count("sales", filter=Q(sales__closed_at__gte=start, sales__closed_at__lt=end, sales__status="CLOSED"), distinct=True),
-    ).values("id", "title", "views", "favorites", "inquiries_count", "visits_count", "sales_count").order_by("-views")[:100]
+    ).values("id", "title", "views", "favorite_additions", "inquiries_count", "visits_scheduled", "visits_completed", "sales_count").order_by("-views")[:100]
     result = []
     for row in rows:
         row["view_to_inquiry_rate"] = round(row["inquiries_count"] / row["views"] * 100, 2) if row["views"] else None
-        row["inquiry_to_visit_rate"] = round(row["visits_count"] / row["inquiries_count"] * 100, 2) if row["inquiries_count"] else None
-        row["visit_to_sale_rate"] = round(row["sales_count"] / row["visits_count"] * 100, 2) if row["visits_count"] else None
+        row["inquiry_to_visit_rate"] = round(row["visits_completed"] / row["inquiries_count"] * 100, 2) if row["inquiries_count"] else None
+        row["visit_to_sale_rate"] = round(row["sales_count"] / row["visits_completed"] * 100, 2) if row["visits_completed"] else None
         result.append(row)
     return Response(result)
 
@@ -166,7 +171,7 @@ def bi_search_demand(request):
             price_ranges[label] = price_ranges.get(label, 0) + 1
         if properties.get("bedrooms_min") is not None:
             value = str(properties["bedrooms_min"]); bedrooms[value] = bedrooms.get(value, 0) + 1
-        for value in properties.get("property_type_ids") or []:
+        for value in properties.get("property_type_codes") or []:
             property_types[str(value)] = property_types.get(str(value), 0) + 1
         for key, value in properties.items():
             if value not in (None, "", [], False, 0, "0") and key != "result_count":
@@ -181,20 +186,95 @@ def bi_search_demand(request):
 @permission_classes([IsMfaVerifiedAdmin, CanViewBI])
 def bi_marketing(request):
     start, end, _ = period_bounds(request)
-    groups = WebSession.objects.filter(started_at__gte=start, started_at__lt=end).values("utm_source", "utm_medium", "utm_campaign", "utm_content").annotate(sessions=Count("id")).order_by("-sessions")[:50]
-    result = []
-    for group in groups:
-        criteria = {key: group[key] for key in ("utm_source", "utm_medium", "utm_campaign", "utm_content")}
-        session_ids = WebSession.objects.filter(started_at__gte=start, started_at__lt=end, **criteria).values_list("id", flat=True)
-        inquiries = Inquiry.objects.filter(created_at__gte=start, created_at__lt=end, session_id__in=session_ids).count()
-        lead_ids = WebSession.objects.filter(id__in=session_ids, lead__isnull=False).values_list("lead_id", flat=True)
-        visits = Visit.objects.filter(created_at__gte=start, created_at__lt=end, lead_id__in=lead_ids).count()
-        sales = Sale.objects.filter(closed_at__gte=start, closed_at__lt=end, lead_id__in=lead_ids, status="CLOSED").count()
-        campaign = MarketingCampaign.objects.filter(utm_campaign=group["utm_campaign"]).first() if group["utm_campaign"] else None
-        spend_end_date = (end - timedelta(microseconds=1)).date()
-        spend = MarketingSpend.objects.filter(campaign=campaign, date__gte=start.date(), date__lte=spend_end_date).aggregate(value=Sum("amount"))["value"] if campaign else None
-        result.append({**group, "inquiries": inquiries, "visits": visits, "sales": sales, "spend": spend, "cost_per_inquiry": spend / inquiries if spend is not None and inquiries else None, "cost_per_visit": spend / visits if spend is not None and visits else None, "cost_per_sale": spend / sales if spend is not None and sales else None})
-    return Response(result)
+    raw_horizon = request.query_params.get("horizon", "90")
+    if raw_horizon == "lifetime":
+        horizon_days, horizon_end = None, None
+    else:
+        try:
+            horizon_days = int(raw_horizon)
+        except (TypeError, ValueError):
+            raise ValidationError({"horizon": "Selecciona 30, 60, 90 o lifetime."})
+        if horizon_days not in (30, 60, 90):
+            raise ValidationError({"horizon": "Selecciona 30, 60, 90 o lifetime."})
+        horizon_end = end + timedelta(days=horizon_days)
+
+    first_touch = WebSession.objects.filter(lead=OuterRef("pk")).order_by("started_at", "id")
+    acquired = Lead.objects.annotate(
+        first_session_id=Subquery(first_touch.values("id")[:1]),
+        acquired_at=Subquery(first_touch.values("started_at")[:1]),
+        acquired_campaign=Subquery(first_touch.values("utm_campaign")[:1]),
+        acquired_source=Subquery(first_touch.values("utm_source")[:1]),
+        acquired_medium=Subquery(first_touch.values("utm_medium")[:1]),
+        acquired_content=Subquery(first_touch.values("utm_content")[:1]),
+    ).filter(acquired_at__gte=start, acquired_at__lt=end)
+
+    campaign_codes = set(WebSession.objects.filter(started_at__gte=start, started_at__lt=end).exclude(utm_campaign__isnull=True).exclude(utm_campaign="").values_list("utm_campaign", flat=True))
+    campaign_codes.update(acquired.exclude(acquired_campaign__isnull=True).values_list("acquired_campaign", flat=True))
+    campaigns = []
+    spend_end = (end - timedelta(microseconds=1)).date()
+    for code in sorted(campaign_codes):
+        lead_ids = list(acquired.filter(acquired_campaign=code).values_list("id", flat=True))
+        sessions = WebSession.objects.filter(started_at__gte=start, started_at__lt=end, utm_campaign=code).count()
+        inquiries = Inquiry.objects.filter(lead_id__in=lead_ids).count()
+        visits_qs = Visit.objects.filter(lead_id__in=lead_ids, status=Visit.Status.COMPLETED)
+        sales_qs = Sale.objects.filter(lead_id__in=lead_ids, status=Sale.Status.CLOSED)
+        if horizon_end is not None:
+            visits_qs = visits_qs.filter(completed_at__lt=horizon_end)
+            sales_qs = sales_qs.filter(closed_at__lt=horizon_end)
+        completed_visits, closed_sales = visits_qs.count(), sales_qs.count()
+        campaign = MarketingCampaign.objects.filter(utm_campaign=code).first()
+        spend = MarketingSpend.objects.filter(
+            campaign=campaign, is_voided=False, date__gte=start.date(), date__lte=spend_end,
+        ).aggregate(value=Sum("amount"))["value"] if campaign else None
+        revenue = sales_qs.aggregate(value=Sum("sale_price"))["value"]
+        commission = sales_qs.aggregate(value=Sum("commission_amount"))["value"]
+        campaigns.append({
+            "utm_campaign": code, "sessions": sessions, "leads": len(lead_ids),
+            "inquiries": inquiries, "completed_visits": completed_visits,
+            "closed_sales": closed_sales, "spend": spend,
+            "cost_per_lead": spend / len(lead_ids) if spend is not None and lead_ids else None,
+            "cost_per_inquiry": spend / inquiries if spend is not None and inquiries else None,
+            "cost_per_completed_visit": spend / completed_visits if spend is not None and completed_visits else None,
+            "cost_per_sale": spend / closed_sales if spend is not None and closed_sales else None,
+            "attributable_revenue": revenue, "attributable_commission": commission,
+        })
+
+    creative_groups = WebSession.objects.filter(started_at__gte=start, started_at__lt=end).values(
+        "utm_source", "utm_medium", "utm_campaign", "utm_content",
+    ).annotate(sessions=Count("id")).order_by("-sessions")[:100]
+    creatives = []
+    for group in creative_groups:
+        lead_ids = list(acquired.filter(
+            acquired_source=group["utm_source"], acquired_medium=group["utm_medium"],
+            acquired_campaign=group["utm_campaign"], acquired_content=group["utm_content"],
+        ).values_list("id", flat=True))
+        creatives.append({
+            **group, "views": AnalyticsEvent.objects.filter(
+                session__started_at__gte=start, session__started_at__lt=end,
+                session__utm_source=group["utm_source"], session__utm_medium=group["utm_medium"],
+                session__utm_campaign=group["utm_campaign"], session__utm_content=group["utm_content"],
+                event_name="listing_viewed",
+            ).count(),
+            "inquiries": Inquiry.objects.filter(lead_id__in=lead_ids).count(),
+            "completed_visits": Visit.objects.filter(lead_id__in=lead_ids, status=Visit.Status.COMPLETED).count(),
+            "closed_sales": Sale.objects.filter(lead_id__in=lead_ids, status=Sale.Status.CLOSED).count(),
+            "spend": None,
+        })
+
+    sales_rows = {}
+    period_sales = Sale.objects.filter(status=Sale.Status.CLOSED, closed_at__gte=start, closed_at__lt=end).select_related("lead")
+    for sale in period_sales:
+        session = WebSession.objects.filter(lead=sale.lead).order_by("started_at", "id").first()
+        key = (session.utm_campaign if session else None, session.utm_source if session else None, session.utm_medium if session else None)
+        row = sales_rows.setdefault(key, {"utm_campaign": key[0], "utm_source": key[1], "utm_medium": key[2], "closed_sales": 0, "revenue": 0, "commission": 0})
+        row["closed_sales"] += 1
+        row["revenue"] += sale.sale_price
+        row["commission"] += sale.commission_amount or 0
+    return Response({
+        "attribution_model": "first_touch", "horizon_days": horizon_days,
+        "campaigns": campaigns, "creatives": creatives,
+        "sales_by_origin": list(sales_rows.values()),
+    })
 
 
 @extend_schema(responses={200: OpenApiTypes.OBJECT})

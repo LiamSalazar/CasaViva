@@ -104,7 +104,7 @@ def test_bi_overview_returns_exact_known_funnel(admin_client, owner, catalog):
     for index, lead in enumerate(leads):
         Inquiry.objects.create(lead=lead, listing=catalog["listing"], channel="WEB", session_id=sessions[index].id)
     for lead in leads[:5]:
-        Visit.objects.create(lead=lead, offering=catalog["offering"], scheduled_at=now)
+        Visit.objects.create(lead=lead, offering=catalog["offering"], scheduled_at=now, status="COMPLETED", completed_at=now)
     for lead in leads[:2]:
         Sale.objects.create(lead=lead, offering=catalog["offering"], listing=catalog["listing"], sale_price=1_000_000, closed_at=now, created_by=owner)
 
@@ -112,7 +112,9 @@ def test_bi_overview_returns_exact_known_funnel(admin_client, owner, catalog):
     assert response.status_code == 200
     assert response.data["current"] == {
         "visitors": 100, "sessions": 100, "listing_views": 60,
-        "inquiries": 10, "visits": 5, "sales": 2,
+        "inquiries": 10, "visits": 5, "visits_scheduled": 0,
+        "visits_completed": 5, "visits_cancelled": 0, "visits_no_show": 0,
+        "sales": 2,
     }
     assert [row["conversion_from_previous"] for row in response.data["funnel"]] == [None, 60.0, 16.67, 50.0, 40.0]
 
@@ -145,7 +147,7 @@ def test_bi_detail_endpoints_calculate_search_marketing_sales_and_decisions(admi
         visitor=visitor, session=session,
         properties={
             "municipality_ids": [str(catalog["municipality"].id)], "price_min": 800000,
-            "price_max": 1500000, "bedrooms_min": 3, "property_type_ids": [str(catalog["offering"].property_type_id)],
+            "price_max": 1500000, "bedrooms_min": 3, "property_type_codes": [catalog["offering"].property_type.code],
             "result_count": 0,
         },
     )
@@ -155,7 +157,7 @@ def test_bi_detail_endpoints_calculate_search_marketing_sales_and_decisions(admi
             visitor=visitor, session=session, listing=catalog["listing"], offering=catalog["offering"], properties={},
         )
     Inquiry.objects.create(lead=lead, listing=catalog["listing"], channel="WEB", session_id=session.id)
-    Visit.objects.create(lead=lead, offering=catalog["offering"], scheduled_at=now)
+    Visit.objects.create(lead=lead, offering=catalog["offering"], scheduled_at=now, status="COMPLETED", completed_at=now)
     Sale.objects.create(
         lead=lead, offering=catalog["offering"], listing=catalog["listing"], sale_price=1_200_000,
         commission_rate=3, commission_amount=36_000, closed_at=now, created_by=owner,
@@ -175,11 +177,56 @@ def test_bi_detail_endpoints_calculate_search_marketing_sales_and_decisions(admi
     assert listings.data[0]["views"] == 6
     assert searches.data["no_results"] == 1
     assert searches.data["municipalities"][0]["label"] == catalog["municipality"].name
-    assert marketing.data[0]["spend"] == 1000
-    assert marketing.data[0]["cost_per_inquiry"] == 1000
+    assert marketing.data["campaigns"][0]["spend"] == 1000
+    assert marketing.data["campaigns"][0]["cost_per_inquiry"] == 1000
     assert sales.data["totals"]["sales"] == 1
     assert decisions.data["pending_leads"] == 1
-    assert listings.data[0]["favorites"] == 0
-    assert listings.data[0]["visits_count"] == 1
+    assert listings.data[0]["favorite_additions"] == 0
+    assert listings.data[0]["visits_completed"] == 1
     assert listings.data[0]["inquiry_to_visit_rate"] == 100.0
     assert listings.data[0]["visit_to_sale_rate"] == 100.0
+
+
+@pytest.mark.django_db
+def test_events_before_and_after_inquiry_share_the_same_lead(client, catalog):
+    from django.core.management import call_command
+    call_command("seed_system")
+    now = timezone.now()
+    visitor = AnonymousVisitor.objects.create(first_seen_at=now, last_seen_at=now)
+    session = WebSession.objects.create(visitor=visitor, started_at=now, last_seen_at=now, landing_path="/", consent_state="ESSENTIAL")
+    base = {"occurred_at": now.isoformat(), "event_name": "page_viewed", "schema_version": 1, "visitor_id": str(visitor.id), "session_id": str(session.id), "properties": {}}
+    before = client.post("/api/v1/public/analytics/events/", base, format="json")
+    inquiry = client.post("/api/v1/public/inquiries/", {"first_name": "Cliente", "email": "eventos@example.test", "privacy_consent": True, "session_id": str(session.id), "visitor_id": str(visitor.id)}, format="json")
+    after = client.post("/api/v1/public/analytics/events/", base, format="json")
+    assert before.status_code == inquiry.status_code == after.status_code == 201
+    lead = Inquiry.objects.get(pk=inquiry.data["id"]).lead
+    assert list(AnalyticsEvent.objects.order_by("received_at").values_list("lead_id", flat=True)) == [lead.id, lead.id]
+
+
+@pytest.mark.django_db
+def test_deferred_attribution_and_campaign_spend_are_not_duplicated(admin_client, owner, catalog):
+    from datetime import datetime
+    zone = timezone.get_current_timezone()
+    acquired_at = timezone.make_aware(datetime(2026, 6, 1, 12), zone)
+    sold_at = timezone.make_aware(datetime(2026, 7, 15, 12), zone)
+    visitor = AnonymousVisitor.objects.create(first_seen_at=acquired_at, last_seen_at=sold_at)
+    leads = []
+    for content in ("creative_1", "creative_2", "creative_3"):
+        lead = Lead.objects.create(first_name=content)
+        leads.append(lead)
+        WebSession.objects.create(visitor=visitor, lead=lead, started_at=acquired_at, last_seen_at=acquired_at, landing_path="/", consent_state="ESSENTIAL", utm_source="instagram", utm_medium="paid_social", utm_campaign="campaign_a", utm_content=content)
+    Inquiry.objects.create(lead=leads[0], channel="WEB")
+    Visit.objects.create(lead=leads[0], offering=catalog["offering"], scheduled_at=acquired_at, status="COMPLETED", completed_at=acquired_at + timedelta(days=9))
+    Sale.objects.create(lead=leads[0], offering=catalog["offering"], listing=catalog["listing"], sale_price=1_000_000, closed_at=sold_at, created_by=owner)
+    campaign = MarketingCampaign.objects.create(name="Campaign A", utm_campaign="campaign_a", channel="Social", start_date=acquired_at.date(), created_by=owner, updated_by=owner)
+    MarketingSpend.objects.create(campaign=campaign, date=acquired_at.date(), amount=3000)
+
+    cohort = admin_client.get("/api/v1/admin/bi/marketing/?period=custom&start=2026-06-01&end=2026-06-30&horizon=60")
+    sales_period = admin_client.get("/api/v1/admin/bi/marketing/?period=custom&start=2026-07-01&end=2026-07-31&horizon=lifetime")
+    assert cohort.status_code == sales_period.status_code == 200
+    assert cohort.data["campaigns"][0]["spend"] == 3000
+    assert cohort.data["campaigns"][0]["closed_sales"] == 1
+    assert len(cohort.data["creatives"]) == 3
+    assert all(row["spend"] is None for row in cohort.data["creatives"])
+    assert sales_period.data["sales_by_origin"][0]["utm_campaign"] == "campaign_a"
+    assert sales_period.data["sales_by_origin"][0]["closed_sales"] == 1

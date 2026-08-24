@@ -16,7 +16,7 @@ import { EmptyState, Footer, PublicHeader, useToast } from "@/components/ui";
 import { formatDate, formatLocation, uid } from "@/lib/utils";
 import { inquiryService, useCasaViva } from "@/services";
 import type { Guide, Inquiry } from "@/types";
-import { trackEvent } from "@/components/analytics-provider";
+import { ensureCurrentAnalyticsIdentity, trackEvent } from "@/components/analytics-provider";
 
 export function DevelopmentsPage() {
   const { developments, properties } = useCasaViva();
@@ -501,6 +501,7 @@ const contactSchema = z.object({
   phone: z.string().optional(),
   subject: z.string().min(1, "Selecciona un motivo"),
   message: z.string().min(10, "Cuéntanos un poco más"),
+  privacy: z.boolean().refine(Boolean, "Debes aceptar el aviso"),
 });
 type ContactData = z.infer<typeof contactSchema>;
 export function ContactPage() {
@@ -509,9 +510,10 @@ export function ContactPage() {
   const {
     register,
     handleSubmit,
-    formState: { errors },
-  } = useForm<ContactData>({ resolver: zodResolver(contactSchema) });
+    formState: { errors, isSubmitting },
+  } = useForm<ContactData>({ resolver: zodResolver(contactSchema), defaultValues: { subject: "", privacy: false } });
   const submit = async (d: ContactData) => {
+    const analyticsIdentity = await ensureCurrentAnalyticsIdentity();
     const item: Inquiry = {
       id: uid("inq"),
       createdAt: new Date().toISOString(),
@@ -521,6 +523,9 @@ export function ContactPage() {
       message: d.message,
       subject: d.subject,
       source: "contact",
+      sessionId: analyticsIdentity.sessionId,
+      visitorId: analyticsIdentity.visitorId,
+      privacyConsent: d.privacy,
       status: "new",
     };
     try {
@@ -567,15 +572,20 @@ export function ContactPage() {
               <Field label="Motivo" error={errors.subject?.message}>
                 <select {...register("subject")}>
                   <option value="">Selecciona</option>
-                  <option>Información de una propiedad</option>
-                  <option>Ayuda con mi búsqueda</option>
-                  <option>Comentario general</option>
+                  <option value="PROPERTY_INFORMATION">Información de una propiedad</option>
+                  <option value="SEARCH_ASSISTANCE">Ayuda con mi búsqueda</option>
+                  <option value="GENERAL_COMMENT">Comentario general</option>
                 </select>
               </Field>
               <Field label="Mensaje" error={errors.message?.message}>
                 <textarea {...register("message")} />
               </Field>
-              <button className="button" type="submit">
+              <label className="privacy-check">
+                <input type="checkbox" {...register("privacy")} />
+                <span>He leído y acepto el Aviso de Privacidad.</span>
+              </label>
+              {errors.privacy && <small>{errors.privacy.message}</small>}
+              <button className="button" type="submit" disabled={isSubmitting}>
                 Enviar mensaje
               </button>
             </form>

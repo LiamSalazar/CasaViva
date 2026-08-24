@@ -12,7 +12,7 @@ class AuditSerializer(serializers.ModelSerializer):
 
 class AuditViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsMfaVerifiedAdmin, CanViewAudit]
-    queryset = AuditEvent.objects.select_related("actor_user")
+    queryset = AuditEvent.objects.select_related("actor_user").order_by("-occurred_at", "id")
     serializer_class = AuditSerializer
     filterset_fields = ["actor_user", "action", "entity_type", "success"]
     search_fields = ["entity_type", "entity_id", "reason"]

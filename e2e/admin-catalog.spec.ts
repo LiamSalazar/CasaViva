@@ -49,7 +49,10 @@ test("catálogo crea desarrolladora, desarrollo, modelo y relación dinámica", 
   await page.getByLabel("Precio MXN").fill("1300000");
   await page.getByLabel("Publicada").check();
   await page.getByRole("button", { name: "Guardar propiedad" }).click();
-  await expect(page).toHaveURL(/\/administracion\/propiedades$/);
+  // La primera visita al listado puede compilar la ruta bajo `next dev`.
+  // El POST ya terminó antes de navegar, pero la transición puede tardar más
+  // que el timeout genérico de Playwright en una instalación limpia.
+  await expect(page).toHaveURL(/\/administracion\/propiedades$/, { timeout: 30_000 });
   await expect(page.getByRole("row").filter({ hasText: "Propiedad de desarrolladora E2E" })).toBeVisible();
   expect((await page.request.get("/api/v1/public/listings/propiedad-de-desarrolladora-e2e/")).status()).toBe(200);
   assertNoErrors();

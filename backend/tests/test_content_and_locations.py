@@ -1,6 +1,6 @@
 import pytest
 
-from apps.content.models import Guide, LocationContent
+from apps.content.models import Guide, HomeContent, HomeHeroSlide, LocationContent
 from apps.catalog.models import Amenity, Development, DevelopmentMedia
 from apps.geo.models import Locality, Neighborhood
 from apps.media_library.models import MediaAsset
@@ -69,6 +69,38 @@ def test_draft_guide_is_admin_only_until_published(admin_client):
 
 
 @pytest.mark.django_db
+def test_home_content_slides_and_editorial_media_round_trip(admin_client, owner, catalog):
+    media = MediaAsset.objects.create(storage_key="home/editorial.webp", media_type="IMAGE", original_filename="editorial.webp", mime_type="image/webp", byte_size=100, width=100, height=80, sha256="b" * 64, uploaded_by=owner)
+    payload = {
+        "key": "main", "hero_eyebrow": "Selección editorial", "hero_title": "Un hogar claro",
+        "editorial_title": "Historia", "editorial_body": "Contenido", "editorial_media": str(media.id),
+        "hero_slides": [{"listing": str(catalog["listing"].id), "eyebrow_override": "Tecámac", "title_override": "Casa seleccionada", "subtitle_override": "Texto del slide", "sort_order": 3, "is_active": True}],
+    }
+    created = admin_client.post("/api/v1/admin/content/", payload, format="json")
+    assert created.status_code == 201, created.data
+    home = HomeContent.objects.get(key="main")
+    slide = HomeHeroSlide.objects.get(home_content=home)
+    assert slide.title_override == "Casa seleccionada" and slide.sort_order == 3
+    public = admin_client.get("/api/v1/public/home/")
+    assert public.status_code == 200
+    assert public.data["content"]["hero_title"] == "Un hogar claro"
+    assert public.data["content"]["editorial_media_url"].endswith("home/editorial.webp")
+    assert public.data["hero"][0]["titleOverride"] == "Casa seleccionada"
+
+
+@pytest.mark.django_db
+def test_guide_hero_media_is_writable_and_public_after_publish(admin_client, owner):
+    media = MediaAsset.objects.create(storage_key="guides/hero.webp", media_type="IMAGE", original_filename="hero.webp", mime_type="image/webp", byte_size=100, width=100, height=80, sha256="c" * 64, uploaded_by=owner)
+    created = admin_client.post("/api/v1/admin/guides/", {"slug": "guia-imagen", "title": "Guía con imagen", "excerpt": "", "content": "Texto", "category": "zonas", "hero_media": str(media.id), "published": False, "featured": False}, format="json")
+    assert created.status_code == 201, created.data
+    assert created.data["heroImage"].endswith("guides/hero.webp")
+    assert admin_client.get("/api/v1/public/guides/guia-imagen/").status_code == 404
+    published = admin_client.patch(f"/api/v1/admin/guides/{created.data['id']}/", {"published": True, "version": created.data["version"]}, format="json")
+    assert published.status_code == 200
+    assert admin_client.get("/api/v1/public/guides/guia-imagen/").data["heroImage"].endswith("guides/hero.webp")
+
+
+@pytest.mark.django_db
 def test_draft_development_is_visible_in_admin_not_public(admin_client, catalog):
     development = catalog["development"]
     assert admin_client.get(f"/api/v1/admin/developments/{development.id}/").status_code == 200
@@ -116,3 +148,41 @@ def test_development_form_fields_round_trip(admin_client, owner, catalog):
     detail = admin_client.get(f"/api/v1/admin/developments/{development.id}/")
     assert detail.data["amenity_ids"] == [amenity.id]
     assert detail.data["media"][0]["role"] == "HERO"
+
+
+@pytest.mark.django_db
+def test_geo_catalog_admin_creates_dependent_options_and_deactivates_them(admin_client):
+    state_response = admin_client.post(
+        "/api/v1/admin/states/", {"name": "Estado prueba", "code": "TST", "is_active": True}, format="json"
+    )
+    assert state_response.status_code == 201, state_response.data
+    municipality_response = admin_client.post(
+        "/api/v1/admin/municipalities/",
+        {"state": state_response.data["id"], "name": "Municipio prueba", "is_active": True},
+        format="json",
+    )
+    assert municipality_response.status_code == 201, municipality_response.data
+    locality_response = admin_client.post(
+        "/api/v1/admin/localities/",
+        {"municipality": municipality_response.data["id"], "name": "Localidad prueba", "is_active": True},
+        format="json",
+    )
+    assert locality_response.status_code == 201, locality_response.data
+    neighborhood_response = admin_client.post(
+        "/api/v1/admin/neighborhoods/",
+        {
+            "municipality": municipality_response.data["id"],
+            "locality": locality_response.data["id"],
+            "name": "Colonia prueba",
+            "postal_code": "01010",
+            "is_active": True,
+        },
+        format="json",
+    )
+    assert neighborhood_response.status_code == 201, neighborhood_response.data
+    listing = admin_client.get(f"/api/v1/admin/neighborhoods/?municipality={municipality_response.data['id']}")
+    assert listing.status_code == 200
+    assert listing.data["results"][0]["name"] == "Colonia prueba"
+    deactivated = admin_client.delete(f"/api/v1/admin/neighborhoods/{neighborhood_response.data['id']}/")
+    assert deactivated.status_code == 204
+    assert Neighborhood.objects.get(pk=neighborhood_response.data["id"]).is_active is False

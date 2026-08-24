@@ -10,6 +10,8 @@ class PublicInquirySerializer(serializers.Serializer):
     email = serializers.EmailField(required=False, allow_blank=True)
     phone = serializers.CharField(max_length=50, required=False, allow_blank=True)
     message = serializers.CharField(max_length=4000, required=False, allow_blank=True)
+    intent = serializers.ChoiceField(choices=Inquiry.Intent.choices, default=Inquiry.Intent.INFORMATION)
+    subject = serializers.ChoiceField(choices=Inquiry.Subject.choices, required=False, allow_null=True, allow_blank=True)
     listing_slug = serializers.SlugField(required=False, allow_blank=True)
     session_id = serializers.UUIDField(required=False, allow_null=True)
     visitor_id = serializers.UUIDField(required=False, allow_null=True)
@@ -29,6 +31,10 @@ class PublicInquirySerializer(serializers.Serializer):
             raise serializers.ValidationError({"visitor_id": "Incluye el visitante asociado a la sesión."})
         if attrs.get("visitor_id") and not attrs.get("session_id"):
             raise serializers.ValidationError({"session_id": "Incluye la sesión de navegación."})
+        if attrs.get("intent") == Inquiry.Intent.VISIT_REQUEST and not attrs.get("listing_slug"):
+            raise serializers.ValidationError({"listing_slug": "Selecciona la propiedad que deseas visitar."})
+        if attrs.get("intent") == Inquiry.Intent.GENERAL_CONTACT and not attrs.get("subject"):
+            raise serializers.ValidationError({"subject": "Selecciona el motivo de contacto."})
         return attrs
 
     def create(self, data):
@@ -53,13 +59,18 @@ class InquirySerializer(serializers.ModelSerializer):
     lead_name = serializers.CharField(source="lead.__str__", read_only=True)
     listing_title = serializers.CharField(source="listing.title", read_only=True, allow_null=True)
     status_label = serializers.CharField(source="get_status_display", read_only=True)
+    intent_label = serializers.CharField(source="get_intent_display", read_only=True)
+    subject_label = serializers.CharField(source="get_subject_display", read_only=True)
+    campaign = serializers.CharField(read_only=True, allow_null=True)
+    source = serializers.CharField(read_only=True, allow_null=True)
     class Meta:
         model = Inquiry
         fields = "__all__"
 
-
 class VisitSerializer(serializers.ModelSerializer):
     lead_name = serializers.CharField(source="lead.__str__", read_only=True)
+    offering_name = serializers.CharField(source="offering.__str__", read_only=True)
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
     class Meta:
         model = Visit
         fields = "__all__"
@@ -67,6 +78,8 @@ class VisitSerializer(serializers.ModelSerializer):
 
 class SaleSerializer(serializers.ModelSerializer):
     lead_name = serializers.CharField(source="lead.__str__", read_only=True)
+    offering_name = serializers.CharField(source="offering.__str__", read_only=True)
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
     class Meta:
         model = Sale
         fields = "__all__"

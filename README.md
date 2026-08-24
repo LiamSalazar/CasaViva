@@ -114,3 +114,7 @@ Las credenciales de esta infraestructura son constantes de prueba aisladas. Play
 - OpenAPI en desarrollo: `/api/schema/` y `/api/schema/docs/`
 
 Documentos: [arquitectura](docs/architecture.md), [modelo y diccionario](docs/database-model.md), [ER](docs/erd.md), [permisos](docs/permissions.md), [seguridad](docs/security.md), [eventos](docs/analytics-events.md), [BI](docs/bi.md), [DW futuro](docs/data-warehouse-roadmap.md), [preparación IA](docs/ai-data-readiness.md), [backups](docs/backup-recovery.md) y [despliegue](docs/deployment.md).
+
+## Preparación para producción
+
+La aplicación no obliga a elegir proveedor. Antes de desplegar: define `config.settings.production`, conecta PostgreSQL externo con SSL, configura `STORAGE_BACKEND=s3` y un bucket S3-compatible, sirve Next y `/api/` bajo HTTPS en el mismo sitio, ejecuta `migrate` con el migrator y después `harden_database_roles`, ejecuta `seed_system` y crea founders una sola vez. Sirve requests con `casaviva_app`, comprueba `/api/health/live/` y `/api/health/ready/`, configura backups externos y completa la [lista de producción](docs/production-checklist.md).

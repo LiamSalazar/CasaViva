@@ -57,8 +57,8 @@ export function HomePage() {
             ) : null;
           })}
           <div className="hero-content">
-            <span className="eyebrow">Propiedades en México</span>
-            <h1>Encuentra el lugar que quieres llamar hogar</h1>
+            <span className="eyebrow">{homeContent.heroEyebrow}</span>
+            <h1>{homeContent.heroTitle}</h1>
             <HeroSearch locations={locations.map((l) => l.name)} />
           </div>
           <div className="hero-meta">
@@ -206,8 +206,8 @@ export function HomePage() {
               {[
                 ["Casas", "propertyType=house"],
                 ["Departamentos", "propertyType=apartment"],
-                ["Casas nuevas", "condition=new"],
-                ["Casas usadas", "condition=used"],
+                ["Casas nuevas", "propertyType=house&condition=new"],
+                ["Casas usadas", "propertyType=house&condition=used"],
                 ["Desarrollos", "development=true"],
                 ["Terrenos", "propertyType=land"],
               ].map(([label, q]) => (

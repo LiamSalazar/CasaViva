@@ -11,7 +11,10 @@ EVENT_SCHEMAS = {
     "recommendation_result_clicked": set(),
     "search_performed": set(),
 }
-ALLOWED_SEARCH_FIELDS = {"municipality_ids", "state_ids", "price_min", "price_max", "bedrooms_min", "property_type_ids", "result_count"}
+ALLOWED_SEARCH_FIELDS = {
+    "municipality_ids", "state_ids", "price_min", "price_max", "bedrooms_min",
+    "property_type_codes", "amenity_slugs", "result_count",
+}
 
 
 def validate_event(name, version, properties):

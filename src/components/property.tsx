@@ -26,9 +26,8 @@ import {
   uid,
 } from "@/lib/utils";
 import { FavoriteButton, ShareButton, useToast } from "@/components/ui";
-import { trackEvent } from "@/components/analytics-provider";
+import { ensureCurrentAnalyticsIdentity, trackEvent } from "@/components/analytics-provider";
 import { inquiryService, useCasaViva } from "@/services";
-import { getAnalyticsIdentity } from "@/services/analytics-session";
 
 export const DynamicMapView = dynamic(
   () => import("./map-view").then((m) => m.MapView),
@@ -136,7 +135,8 @@ export function DevelopmentCard({
     (p) => p.developmentId === development.id && p.published,
   );
   const knownPrices = associated.map((p) => p.price).filter((x): x is number => x !== undefined);
-  const min = knownPrices.length ? Math.min(...knownPrices) : 0;
+  const count = development.publishedListingCount ?? associated.length;
+  const min = development.currentMinPrice ?? (knownPrices.length ? Math.min(...knownPrices) : 0);
   return (
     <Link
       href={`/desarrollos/${development.slug}`}
@@ -152,8 +152,8 @@ export function DevelopmentCard({
       </div>
       <h3>{development.name}</h3>
       <p>
-        {development.municipality}, {development.state} · {associated.length}{" "}
-        {associated.length === 1 ? "modelo" : "modelos"}
+        {development.municipality}, {development.state} · {count}{" "}
+        {count === 1 ? "propiedad" : "propiedades"}
         {min ? ` · Desde ${formatCurrency(min)}` : ""}
       </p>
     </Link>
@@ -163,11 +163,14 @@ export function DevelopmentCard({
 export function PropertyGallery({ property }: { property: Property }) {
   const [open, setOpen] = useState(false);
   const [index, setIndex] = useState(0);
-  const images = [
+  const [galleryKind, setGalleryKind] = useState<"photos" | "floorplans">("photos");
+  const photos = [
     property.heroImage,
     ...property.gallery.filter((x) => x !== property.heroImage),
   ];
-  const show = (i = 0) => {
+  const images = galleryKind === "floorplans" ? property.floorplans || [] : photos;
+  const show = (i = 0, kind: "photos" | "floorplans" = "photos") => {
+    setGalleryKind(kind);
     setIndex(i);
     setOpen(true);
   };
@@ -189,7 +192,7 @@ export function PropertyGallery({ property }: { property: Property }) {
   return (
     <>
       <div className="property-gallery">
-        {images.slice(0, 5).map((src, i) => (
+        {photos.slice(0, 5).map((src, i) => (
           <div
             className="gallery-cell"
             key={src + i}
@@ -212,11 +215,11 @@ export function PropertyGallery({ property }: { property: Property }) {
                 className="gallery-overlays"
                 onClick={(e) => e.stopPropagation()}
               >
-                <button onClick={() => show(0)}>
-                  <Images size={14} /> {images.length} Fotos
+                <button onClick={() => show(0, "photos")}>
+                  <Images size={14} /> {photos.length} Fotos
                 </button>
                 {property.floorplans?.length ? (
-                  <button onClick={() => show(0)}>
+                  <button onClick={() => show(0, "floorplans")}>
                     <Maximize2 size={14} /> {property.floorplans.length} Planos
                   </button>
                 ) : null}
@@ -248,7 +251,7 @@ export function PropertyGallery({ property }: { property: Property }) {
         >
           <header>
             <span>
-              {index + 1} / {images.length}
+              {galleryKind === "floorplans" ? "Plano" : "Foto"} {index + 1} / {images.length}
             </span>
             <button
               className="icon-button"
@@ -327,8 +330,8 @@ export function PropertyStickyBar({
         {property.constructionM2 && (
           <span>{formatArea(property.constructionM2)}</span>
         )}
-        <span>{property.bedrooms} rec.</span>
-        <span>{property.bathrooms} baños</span>
+        {property.bedrooms != null && <span>{property.bedrooms} rec.</span>}
+        {property.bathrooms != null && <span>{property.bathrooms} baños</span>}
       </div>
       <div>
         <ShareButton />
@@ -414,7 +417,7 @@ export function PropertyContactCard({ property }: { property: Property }) {
     data: InquiryForm,
     source: "property" | "visit" = "property",
   ) => {
-    const analyticsIdentity = getAnalyticsIdentity();
+    const analyticsIdentity = await ensureCurrentAnalyticsIdentity();
     const item: Inquiry = {
       id: uid("inq"),
       createdAt: new Date().toISOString(),
@@ -427,6 +430,7 @@ export function PropertyContactCard({ property }: { property: Property }) {
       listingSlug: property.slug,
       sessionId: analyticsIdentity.sessionId,
       visitorId: analyticsIdentity.visitorId,
+      privacyConsent: data.privacy,
       status: "new",
     };
     try {
@@ -491,7 +495,7 @@ export function PropertyContactCard({ property }: { property: Property }) {
           type="button"
           onClick={handleSubmit((d) => submit(d, "visit"))}
         >
-          <CalendarDays size={17} /> Agendar visita
+          <CalendarDays size={17} /> Solicitar visita
         </button>
       </form>
     </aside>

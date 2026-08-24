@@ -33,12 +33,12 @@ class GeoCatalogViewSet(viewsets.ModelViewSet):
 
 
 class StateViewSet(GeoCatalogViewSet):
-    queryset = State.objects.all()
+    queryset = State.objects.order_by("name", "id")
     serializer_class = StateAdminSerializer
 
 
 class MunicipalityViewSet(GeoCatalogViewSet):
-    queryset = Municipality.objects.select_related("state")
+    queryset = Municipality.objects.select_related("state").order_by("state__name", "name", "id")
     serializer_class = MunicipalityAdminSerializer
     filterset_fields = ["state", "is_active", "is_featured"]
 

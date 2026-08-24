@@ -1,3 +1,4 @@
+import base64
 import io
 
 import pytest
@@ -34,6 +35,7 @@ def test_valid_image_is_reprocessed_and_stored(admin_client, tmp_path):
         ("pagina.html", b"<html><script>alert(1)</script></html>", "text/html"),
         ("codigo.js", b"alert('x')", "application/javascript"),
         ("corrupta.jpg", b"\xff\xd8\xffbroken", "image/jpeg"),
+        ("crc-invalido.png", base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZL8sAAAAASUVORK5CYII="), "image/png"),
         ("falso.jpg", b"%PDF-1.4\n%test", "image/jpeg"),
     ],
 )

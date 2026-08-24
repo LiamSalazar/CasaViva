@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import OuterRef, Subquery
 from django.utils import timezone
 from rest_framework import mixins, viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
@@ -10,9 +11,10 @@ from apps.common.exports import csv_response
 from apps.common.exceptions import Conflict
 from apps.common.services import archive_entity, require_current_version, restore_entity
 from apps.audit.services import audit_event
+from apps.analytics.models import WebSession
 from .models import Inquiry, Lead, LeadStageHistory, Sale, Visit
 from .serializers import InquirySerializer, LeadSerializer, PublicInquirySerializer, SaleSerializer, VisitSerializer
-from .services import change_lead_stage, change_sale_status, create_sale
+from .services import change_lead_stage, change_sale_status, change_visit_status, create_sale, create_visit
 from drf_spectacular.utils import extend_schema, OpenApiTypes
 
 
@@ -26,13 +28,14 @@ def public_inquiry(request):
     serializer = PublicInquirySerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     inquiry = serializer.save()
-    return Response({"id": inquiry.id, "message": "Recibimos tu consulta. Te contactaremos pronto."}, status=201)
+    message = "Solicitud de visita enviada." if inquiry.intent == Inquiry.Intent.VISIT_REQUEST else "Recibimos tu consulta. Te contactaremos pronto."
+    return Response({"id": inquiry.id, "message": message}, status=201)
 
 
 class LeadViewSet(viewsets.ModelViewSet):
     permission_classes = [IsMfaVerifiedAdmin, HasRequiredPermission]
     required_permission = "crm.manage_leads"
-    queryset = Lead.objects.select_related("owner_user")
+    queryset = Lead.objects.select_related("owner_user").order_by("-created_at", "id")
     serializer_class = LeadSerializer
     filterset_fields = ["status", "owner_user"]
     search_fields = ["first_name", "last_name", "email", "phone_normalized"]
@@ -89,15 +92,19 @@ class CommercialHistoryViewSet(
 class InquiryViewSet(CommercialHistoryViewSet):
     permission_classes = [IsMfaVerifiedAdmin, HasRequiredPermission]
     required_permission = "crm.manage_inquiries"
-    queryset = Inquiry.objects.select_related("lead", "listing", "assigned_to").order_by("-created_at", "id")
+    _sessions = WebSession.objects.filter(pk=OuterRef("session_id"))
+    queryset = Inquiry.objects.select_related("lead", "listing", "assigned_to").annotate(
+        campaign=Subquery(_sessions.values("utm_campaign")[:1]),
+        source=Subquery(_sessions.values("utm_source")[:1]),
+    ).order_by("-created_at", "id")
     serializer_class = InquirySerializer
-    filterset_fields = ["status", "channel", "assigned_to"]
+    filterset_fields = ["status", "channel", "intent", "assigned_to"]
     search_fields = ["lead__first_name", "lead__last_name", "lead__email", "message"]
 
     @action(detail=False, methods=["get"])
     def export(self, request):
-        rows = [[str(x.id), str(x.lead), x.get_channel_display(), x.get_status_display(), x.listing.title if x.listing else "", x.created_at.isoformat()] for x in self.filter_queryset(self.get_queryset())]
-        return csv_response("consultas.csv", ["Identificador", "Cliente", "Canal", "Estado", "Propiedad", "Creada"], rows)
+        rows = [[str(x.id), str(x.lead), x.get_intent_display(), x.get_subject_display() if x.subject else "", x.get_channel_display(), x.get_status_display(), x.listing.title if x.listing else "", x.created_at.isoformat()] for x in self.filter_queryset(self.get_queryset())]
+        return csv_response("consultas.csv", ["Identificador", "Cliente", "Intención", "Motivo", "Canal", "Estado", "Propiedad", "Creada"], rows)
 
 class VisitViewSet(CommercialHistoryViewSet):
     permission_classes = [IsMfaVerifiedAdmin, HasRequiredPermission]
@@ -105,6 +112,25 @@ class VisitViewSet(CommercialHistoryViewSet):
     queryset = Visit.objects.select_related("lead", "offering", "assigned_to").order_by("-scheduled_at", "id")
     serializer_class = VisitSerializer
     filterset_fields = ["status", "assigned_to"]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        visit = create_visit(actor=request.user, **serializer.validated_data)
+        return Response(self.get_serializer(visit).data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        visit = self.get_object()
+        data = request.data.copy()
+        new_status = data.pop("status", visit.status)
+        if data:
+            serializer = self.get_serializer(visit, data=data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            visit = serializer.save()
+            audit_event(request.user, "UPDATE", visit, request=request)
+        if new_status != visit.status:
+            visit = change_visit_status(visit, new_status, request.user, request=request)
+        return Response(self.get_serializer(visit).data)
 
 class SaleViewSet(CommercialHistoryViewSet):
     permission_classes = [IsMfaVerifiedAdmin, HasRequiredPermission]

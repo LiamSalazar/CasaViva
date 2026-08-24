@@ -1,4 +1,4 @@
-from django.db.models import OuterRef, Subquery, DecimalField, Q, Prefetch, F, Case, When, Value, IntegerField
+from django.db.models import Count, OuterRef, Subquery, DecimalField, Q, Prefetch, F, Case, When, Value, IntegerField
 from django.db.models.functions import Abs, Coalesce
 from django.http import HttpResponsePermanentRedirect
 from django.shortcuts import get_object_or_404
@@ -80,7 +80,13 @@ class PublicListingViewSet(viewsets.ReadOnlyModelViewSet):
         if p.get("land_area"): qs = qs.filter(Q(offering__land_area_max__gte=p["land_area"]) | Q(offering__land_area_min__gte=p["land_area"]))
         if p.get("amenities"):
             for amenity in p["amenities"].split(","):
-                qs = qs.filter(offering__amenity_links__amenity__name=amenity)
+                # Slugs are the stable public identity. Names remain accepted
+                # temporarily so saved searches created before this migration
+                # do not crash or silently corrupt browser state.
+                qs = qs.filter(
+                    Q(offering__amenity_links__amenity__slug=amenity)
+                    | Q(offering__amenity_links__amenity__name=amenity)
+                )
             qs = qs.distinct()
         ordering = p.get("ordering", "newest")
         if ordering == "price_asc":
@@ -90,6 +96,25 @@ class PublicListingViewSet(viewsets.ReadOnlyModelViewSet):
         if ordering == "area_desc":
             return qs.order_by(F("offering__construction_area_max").desc(nulls_last=True), F("offering__construction_area_min").desc(nulls_last=True))
         return qs.order_by("-published_at")
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        facets = {
+            "property_types": list(
+                queryset.values("offering__property_type__code", "offering__property_type__name")
+                .annotate(count=Count("id", distinct=True)).order_by("offering__property_type__name")
+            ),
+            "conditions": list(
+                queryset.exclude(offering__condition__isnull=True).values("offering__condition")
+                .annotate(count=Count("id", distinct=True)).order_by("offering__condition")
+            ),
+        }
+        page = self.paginate_queryset(queryset)
+        if page is None:
+            return Response({"count": queryset.count(), "next": None, "previous": None, "results": self.get_serializer(queryset, many=True).data, "facets": facets})
+        response = self.get_paginated_response(self.get_serializer(page, many=True).data)
+        response.data["facets"] = facets
+        return response
 
     @action(detail=False, methods=["get"], url_path="favorites")
     def favorites(self, request):
@@ -292,15 +317,34 @@ class PropertyAggregateViewSet(viewsets.ModelViewSet):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def public_home(request):
-    from apps.content.models import HomeContent
+    from apps.content.models import HomeContent, HomeHeroSlide
     from apps.content.serializers import HomeContentSerializer
     listings = public_listing_queryset()
     featured = listings.filter(is_featured=True)[:8]
     if not featured: featured = listings[:8]
     developments = Development.objects.filter(is_published=True).select_related("developer", "state", "municipality")[:8]
     locations = [{"id": item.id, "name": item.name, "state": item.state.name, "slug": item.location_content.slug} for item in Municipality.objects.filter(is_active=True, location_content__is_featured=True, location_content__archived_at__isnull=True).select_related("state", "location_content")[:12]]
-    content = HomeContent.objects.filter(key="main").first()
-    return Response({"hero": PublicListingSerializer(featured[:5], many=True, context={"request": request}).data, "featured_listings": PublicListingSerializer(featured, many=True, context={"request": request}).data, "featured_developments": DevelopmentSerializer(developments, many=True).data, "featured_locations": locations, "content": HomeContentSerializer(content).data if content else None})
+    content = HomeContent.objects.select_related("editorial_media").filter(key="main").first()
+    hero = []
+    if content:
+        slides = HomeHeroSlide.objects.filter(
+            home_content=content, is_active=True, listing__is_published=True,
+            listing__archived_at__isnull=True, listing__offering__archived_at__isnull=True,
+        ).select_related("listing").order_by("sort_order", "created_at")
+        slide_listings = public_listing_queryset().filter(pk__in=[slide.listing_id for slide in slides])
+        by_id = {item.pk: item for item in slide_listings}
+        for slide in slides:
+            if slide.listing_id not in by_id:
+                continue
+            data = PublicListingSerializer(by_id[slide.listing_id], context={"request": request}).data
+            data.update({
+                "slideId": slide.id, "eyebrowOverride": slide.eyebrow_override,
+                "titleOverride": slide.title_override, "subtitleOverride": slide.subtitle_override,
+            })
+            hero.append(data)
+    if not hero:
+        hero = PublicListingSerializer(featured[:5], many=True, context={"request": request}).data
+    return Response({"hero": hero, "featured_listings": PublicListingSerializer(featured, many=True, context={"request": request}).data, "featured_developments": DevelopmentSerializer(developments, many=True).data, "featured_locations": locations, "content": HomeContentSerializer(content).data if content else None})
 
 
 @extend_schema(exclude=True)

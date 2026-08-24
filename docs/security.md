@@ -31,3 +31,7 @@ Las operaciones de usuarios, permisos, hard delete y reset MFA usan el helper ce
 La suite PostgreSQL se conecta como cada rol real y comprueba permisos positivos y negativos, flags de clúster, inmutabilidad de auditoría y un `pg_dump` real. Estos controles no se simulan con mocks.
 
 El hardening se ejecuta obligatoriamente después de cada `migrate` y antes de seeds o tráfico. Los permisos de marketing separan lectura de BI/marketing de la administración de campañas y gasto; Founder Admin y Owner conservan gestión, mientras un analista con sólo `analytics.view_bi` no puede escribir. Inquiry, Visit y Sale no exponen DELETE CRUD ordinario. Las ventas cambian entre `CLOSED` y `CANCELLED` mediante un servicio transaccional auditado que mantiene la etapa del lead coherente.
+
+Los formularios públicos exigen consentimiento explícito y conservan versión del aviso, propósito, sesión y visitante. Una solicitud de visita crea una Inquiry, no una Visit. Los gastos de marketing se anulan con motivo, actor, MFA reciente y auditoría, y no se eliminan por CRUD. La actualización de usuarios usa un serializer cerrado, validadores de contraseña y email normalizado/único; `is_superuser` nunca es un campo editable.
+
+Producción admite storage S3-compatible y PostgreSQL con SSL por variables de entorno. Faltantes críticos detienen el arranque. CORS no se abre globalmente; se prefiere same-origin y CSRF permanece activo.

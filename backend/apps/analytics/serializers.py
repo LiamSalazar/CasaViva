@@ -49,8 +49,13 @@ class EventSerializer(serializers.ModelSerializer):
         validate_event(attrs["event_name"], attrs.get("schema_version", 1), attrs.get("properties", {}))
         if not AnonymousVisitor.objects.filter(pk=attrs["visitor_id"]).exists():
             raise serializers.ValidationError({"visitor_id": "Visitante desconocido."})
-        if not WebSession.objects.filter(pk=attrs["session_id"], visitor_id=attrs["visitor_id"]).exists():
+        session = WebSession.objects.filter(pk=attrs["session_id"], visitor_id=attrs["visitor_id"]).first()
+        if session is None:
             raise serializers.ValidationError({"session_id": "Sesión desconocida."})
+        supplied_lead = attrs.get("lead")
+        if supplied_lead and session.lead_id and supplied_lead.pk != session.lead_id:
+            raise serializers.ValidationError({"lead": "El cliente no corresponde a la sesión."})
+        attrs["lead"] = session.lead
         return attrs
 
     def create(self, validated_data):

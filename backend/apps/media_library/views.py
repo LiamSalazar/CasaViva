@@ -14,4 +14,4 @@ def upload_media(request):
     if not upload:
         return Response({"detail": "Selecciona un archivo."}, status=400)
     asset = store_upload(upload, request.user, media_type=request.data.get("media_type", "IMAGE"), alt_text=request.data.get("alt_text"))
-    return Response({"id": asset.id, "url": f"/media/{asset.storage_key}", "width": asset.width, "height": asset.height}, status=201)
+    return Response({"id": asset.id, "url": asset.url, "width": asset.width, "height": asset.height}, status=201)

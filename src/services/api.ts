@@ -92,6 +92,7 @@ export function mapProperty(raw: Record<string, any>): Property {
     description: p.description || "",
     shortDescription: p.shortDescription || "",
     amenities: p.amenities || [],
+    amenitySlugs: p.amenitySlugs || [],
     amenityIds: offering?.amenity_ids || [],
     featureValues: offering?.feature_values || [],
     internalFeatures: [],
@@ -104,6 +105,7 @@ export function mapProperty(raw: Record<string, any>): Property {
     sourceType: p.sourceType,
     heroImage: p.heroImage || PLACEHOLDER,
     gallery: p.gallery?.length ? p.gallery : [PLACEHOLDER],
+    floorplans: p.floorplans || [],
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
     version: raw.version,
@@ -152,10 +154,10 @@ export function buildPropertyPayload(item: Property, propertyTypeId: string, loc
       levels_max: item.levelsMax ?? null,
       construction_area_min: item.constructionM2 ?? null,
       construction_area_max: item.constructionM2Max ?? null,
-      construction_area_basis: item.constructionM2 !== undefined ? item.constructionAreaBasis || "EXACT" : null,
+      construction_area_basis: item.constructionM2 !== undefined || item.constructionM2Max !== undefined ? item.constructionAreaBasis || (item.constructionM2Max !== undefined && item.constructionM2 === undefined ? "UP_TO" : "EXACT") : null,
       land_area_min: item.landM2 ?? null,
       land_area_max: item.landM2Max ?? null,
-      land_area_basis: item.landM2 !== undefined ? item.landAreaBasis || "EXACT" : null,
+      land_area_basis: item.landM2 !== undefined || item.landM2Max !== undefined ? item.landAreaBasis || (item.landM2Max !== undefined && item.landM2 === undefined ? "UP_TO" : "EXACT") : null,
       garden_area_min: item.gardenM2 ?? null,
       garden_area_max: item.gardenM2Max ?? null,
       garden_area_basis: item.gardenM2 !== undefined || item.gardenM2Max !== undefined ? item.gardenAreaBasis || (item.gardenM2Max !== undefined ? "RANGE" : "EXACT") : null,
@@ -188,7 +190,7 @@ export function buildPropertyPayload(item: Property, propertyTypeId: string, loc
 
 export const api = {
   publicListingPage: async (params = "") => {
-    const data = await apiFetch<{ count: number; next: string | null; previous: string | null; results: Record<string, any>[] }>(`/api/v1/public/listings/${params ? `?${params}` : ""}`);
+    const data = await apiFetch<{ count: number; next: string | null; previous: string | null; results: Record<string, any>[]; facets?: import("@/types").SearchFacets }>(`/api/v1/public/listings/${params ? `?${params}` : ""}`);
     return { ...data, results: data.results.map(mapProperty) };
   },
   publicListings: async (params = "") => {
@@ -209,7 +211,7 @@ export const api = {
   },
   home: () => apiFetch<Record<string, any>>("/api/v1/public/home/"),
   searchOptions: () => apiFetch<SearchOptions>("/api/v1/public/search-options/"),
-  developments: async () => (await apiFetch<{ results: Development[] }>("/api/v1/public/developments/")).results.map((d) => ({ ...d, heroImage: d.heroImage || PLACEHOLDER, gallery: d.gallery?.length ? d.gallery : [PLACEHOLDER], createdAt: d.createdAt || "", updatedAt: d.updatedAt || "", propertyIds: [] })),
+  developments: async () => (await apiFetch<{ results: Development[] }>("/api/v1/public/developments/")).results.map((d) => ({ ...d, heroImage: d.heroImage || PLACEHOLDER, gallery: d.gallery?.length ? d.gallery : [PLACEHOLDER], createdAt: d.createdAt || "", updatedAt: d.updatedAt || "", propertyIds: [], currentMinPrice: numberOrUndefined(d.currentMinPrice) })),
   locations: async () => {
     const states = await apiFetch<Array<{ id: string; name: string; municipalities: Array<{ id: string; name: string; slug?: string; description: string; heroImage?: string; is_featured: boolean; latitude?: string; longitude?: string; content_id?: string }> }>>("/api/v1/public/locations/");
     return states.flatMap((s) => s.municipalities.map((m): Location => ({ id: m.id, stateId: s.id, slug: m.slug || m.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-"), name: m.name, state: s.name, description: m.description || "", heroImage: m.heroImage || PLACEHOLDER, featured: m.is_featured, latitude: numberOrUndefined(m.latitude), longitude: numberOrUndefined(m.longitude), contentId: m.content_id, hasContent: Boolean(m.content_id) })));

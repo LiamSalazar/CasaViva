@@ -4,6 +4,15 @@ if SECRET_KEY == "unsafe-development-only":  # noqa: F405
     raise RuntimeError("DJANGO_SECRET_KEY is required in production")
 if not ALLOWED_HOSTS:  # noqa: F405
     raise RuntimeError("ALLOWED_HOSTS must be explicit in production")
+if not os.environ.get("DATABASE_URL"):  # noqa: F405
+    raise RuntimeError("DATABASE_URL is required in production")
+if STORAGE_BACKEND not in {"local", "s3"}:  # noqa: F405
+    raise RuntimeError("STORAGE_BACKEND must be local or s3")
+if STORAGE_BACKEND == "s3":  # noqa: F405
+    required_storage = ["S3_BUCKET_NAME", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"]
+    missing_storage = [name for name in required_storage if not os.environ.get(name)]
+    if missing_storage:
+        raise RuntimeError(f"Missing S3 storage settings: {', '.join(missing_storage)}")
 
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True

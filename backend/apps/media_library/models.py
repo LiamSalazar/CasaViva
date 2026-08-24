@@ -24,3 +24,8 @@ class MediaAsset(UUIDTimeStampedModel):
 
     def __str__(self):
         return self.original_filename
+
+    @property
+    def url(self):
+        from django.core.files.storage import default_storage
+        return default_storage.url(self.storage_key)

@@ -393,6 +393,7 @@ export const seedInquiries: Inquiry[] = [
     phone: "55 1234 5678",
     message: "Quisiera conocer los horarios disponibles para visitar.",
     source: "property",
+    privacyConsent: true,
     propertyId: "prop-1",
     status: "new",
   },
@@ -404,12 +405,15 @@ export const seedInquiries: Inquiry[] = [
     phone: "55 9876 4321",
     message: "Busco una casa de tres recámaras en Tecámac.",
     source: "contact",
+    privacyConsent: true,
     subject: "Ayuda con mi búsqueda",
     status: "viewed",
   },
 ];
 
 export const seedHomeContent: HomeContent = {
+  heroEyebrow: "Propiedades en México",
+  heroTitle: "Encuentra el lugar que quieres llamar hogar",
   heroSlides: seedProperties
     .filter((p) => p.featured)
     .slice(0, 5)

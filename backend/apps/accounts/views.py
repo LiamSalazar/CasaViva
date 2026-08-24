@@ -15,7 +15,7 @@ from django.contrib.auth.models import Group, Permission
 from drf_spectacular.utils import extend_schema, OpenApiTypes
 from apps.audit.services import audit_event
 from .models import RecoveryCode
-from .serializers import LoginSerializer, TotpSerializer, UserSerializer
+from .serializers import AdminUserUpdateSerializer, LoginSerializer, TotpSerializer, UserPermissionsSerializer, UserSerializer
 from .permissions import IsMfaVerifiedAdmin
 from .services import change_user_access, revoke_user_sessions
 from .security import has_recent_mfa
@@ -145,24 +145,50 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def update(self, request, *args, **kwargs):
         user = self.get_object()
-        role_name = request.data.get("role_name")
-        if role_name == "Owner":
-            return Response({"detail": "Liam es el único superusuario ordinario."}, status=400)
-        group = Group.objects.filter(name=role_name).first() if role_name else None
-        change_user_access(request.user, user, group=group, is_active=request.data.get("is_active"), request=request)
+        serializer = AdminUserUpdateSerializer(data=request.data, context={"user": user})
+        serializer.is_valid(raise_exception=True)
+        values = serializer.validated_data
+        role_name = values.pop("role_name", None)
+        is_active = values.pop("is_active", None)
+        password = values.pop("password", None)
+        group = Group.objects.get(name=role_name) if role_name else None
+        if group is not None or is_active is not None:
+            user = change_user_access(request.user, user, group=group, is_active=is_active, request=request)
+        changed_fields = []
         for field in ("first_name", "last_name", "email"):
-            if field in request.data: setattr(user, field, request.data[field])
-        if request.data.get("password"):
-            user.set_password(request.data["password"]); user.last_password_change_at = __import__("django.utils.timezone", fromlist=["now"]).now(); revoke_user_sessions(user)
-        user.save()
+            if field in values:
+                setattr(user, field, values[field]); changed_fields.append(field)
+        if password:
+            user.set_password(password)
+            user.last_password_change_at = __import__("django.utils.timezone", fromlist=["now"]).now()
+            user.authz_version += 1
+            changed_fields.extend(["password", "last_password_change_at", "authz_version"])
+            revoke_user_sessions(user)
+        if changed_fields:
+            user.save(update_fields=[*changed_fields, "updated_at"])
+            audit_event(request.user, "UPDATE", user, request=request)
+        user = self.get_queryset().get(pk=user.pk)
         return Response(self.get_serializer(user).data)
+
+    @action(detail=False, methods=["get"], url_path="permission-options")
+    def permission_options(self, request):
+        permissions = Permission.objects.select_related("content_type").filter(
+            content_type__app_label__in=["catalog", "listings", "crm", "content", "analytics", "audit", "marketing"]
+        ).order_by("content_type__app_label", "codename")
+        return Response([
+            {"key": f"{permission.content_type.app_label}.{permission.codename}", "name": permission.name}
+            for permission in permissions
+        ])
 
     @action(detail=True, methods=["post"])
     def permissions(self, request, pk=None):
         user = self.get_object()
-        codenames = request.data.get("permissions", [])
-        permissions = list(Permission.objects.filter(codename__in=codenames))
-        if len(permissions) != len(set(codenames)):
+        serializer = UserPermissionsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        keys = set(serializer.validated_data["permissions"])
+        query = Permission.objects.select_related("content_type")
+        permissions = [permission for permission in query if f"{permission.content_type.app_label}.{permission.codename}" in keys]
+        if len(permissions) != len(keys):
             return Response({"detail": "Uno o más permisos no existen."}, status=400)
         change_user_access(request.user, user, permissions=permissions, request=request)
         audit_event(request.user, "PERMISSION_GRANTED", user, request=request)

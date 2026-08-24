@@ -1,9 +1,12 @@
 from django.db.models import Q
 from django.utils import timezone
-from rest_framework import viewsets
+from django.db import transaction
+from django.db.models.deletion import ProtectedError
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from apps.accounts.permissions import HasRequiredPermission, IsMfaVerifiedAdmin
+from apps.accounts.security import has_recent_mfa
 from apps.audit.services import audit_event
 from apps.common.exceptions import Conflict
 from apps.common.services import archive_entity, require_current_version, restore_entity
@@ -16,6 +19,11 @@ from .serializers import AmenitySerializer, DeveloperSerializer, DevelopmentSeri
 class BusinessViewSet(viewsets.ModelViewSet):
     permission_classes = [IsMfaVerifiedAdmin, HasRequiredPermission]
     search_fields = ["name"]
+
+    def get_permissions(self):
+        if self.action in ("delete_preview", "hard_delete"):
+            self.required_permission = "audit.hard_delete_business_record"
+        return super().get_permissions()
 
     def get_queryset(self):
         qs = self.queryset
@@ -44,6 +52,50 @@ class BusinessViewSet(viewsets.ModelViewSet):
         obj = self.queryset.model.all_objects.get(pk=pk)
         restore_entity(obj, request.user)
         return Response(self.get_serializer(obj).data)
+
+    def dependency_summary(self, obj):
+        if isinstance(obj, Developer):
+            return {"developments": obj.developments.count(), "models": obj.housing_models.count()}
+        if isinstance(obj, Development):
+            links = obj.model_links.all()
+            return {"models": links.count(), "properties": PropertyOffering.all_objects.filter(development_model__in=links).count()}
+        if isinstance(obj, HousingModel):
+            links = obj.development_links.all()
+            return {"developments": links.count(), "properties": PropertyOffering.all_objects.filter(development_model__in=links).count()}
+        if isinstance(obj, DevelopmentModel):
+            return {"properties": obj.offerings.count()}
+        return {"uses": 1}
+
+    @action(detail=True, methods=["get"], url_path="delete-preview")
+    def delete_preview(self, request, pk=None):
+        obj = self.queryset.model.all_objects.get(pk=pk)
+        dependencies = self.dependency_summary(obj)
+        return Response({**dependencies, "can_delete": obj.archived_at is not None and not any(dependencies.values()), "confirmation": getattr(obj, "name", str(obj))})
+
+    @action(detail=True, methods=["post"], url_path="hard-delete")
+    @transaction.atomic
+    def hard_delete(self, request, pk=None):
+        if not has_recent_mfa(request):
+            return Response({"detail": "Vuelve a verificar tu identidad para continuar."}, status=403)
+        obj = self.queryset.model.all_objects.select_for_update().get(pk=pk)
+        expected = getattr(obj, "name", str(obj))
+        confirmation = request.data.get("confirmation")
+        reason = request.data.get("reason")
+        if confirmation != expected:
+            raise serializers.ValidationError({"confirmation": "Escribe exactamente el nombre del registro."})
+        if not isinstance(reason, str) or len(reason.strip()) < 10 or len(reason) > 500:
+            raise serializers.ValidationError({"reason": "Explica el motivo en 10 a 500 caracteres."})
+        dependencies = self.dependency_summary(obj)
+        if obj.archived_at is None:
+            raise serializers.ValidationError({"detail": "Archiva el registro antes de eliminarlo definitivamente."})
+        if any(dependencies.values()):
+            raise serializers.ValidationError({"detail": "Este registro tiene relaciones o actividad y sólo puede mantenerse archivado.", "dependencies": dependencies})
+        audit_event(request.user, "HARD_DELETE", obj, old_values={field.name: str(getattr(obj, field.name)) for field in obj._meta.fields}, request=request, reason=reason.strip())
+        try:
+            obj.delete()
+        except ProtectedError:
+            raise serializers.ValidationError({"detail": "Este registro forma parte del historial comercial y no puede eliminarse definitivamente. Puedes mantenerlo archivado."})
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class DeveloperViewSet(BusinessViewSet):
@@ -135,11 +187,11 @@ class CatalogViewSet(viewsets.ModelViewSet):
         return Response(status=204)
 
 class PropertyTypeViewSet(CatalogViewSet):
-    queryset = PropertyType.objects.all()
+    queryset = PropertyType.objects.order_by("sort_order", "name", "id")
     serializer_class = PropertyTypeSerializer
 
 class AmenityViewSet(CatalogViewSet):
-    queryset = Amenity.objects.all()
+    queryset = Amenity.objects.order_by("sort_order", "name", "id")
     serializer_class = AmenitySerializer
 
 class FeatureViewSet(CatalogViewSet):

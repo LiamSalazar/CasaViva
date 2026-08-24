@@ -4,6 +4,7 @@ from pathlib import Path
 
 from .test import *  # noqa: F403
 
+DEBUG = True
 database_name = os.environ.get("POSTGRES_TEST_DB", "casaviva_test")
 if "test" not in database_name.lower():
     raise RuntimeError("POSTGRES_TEST_DB debe contener 'test'; se rechazó una base potencialmente real.")

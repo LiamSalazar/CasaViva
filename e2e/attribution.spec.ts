@@ -43,39 +43,38 @@ test("UTM conserva atribución desde sesión hasta venta y BI", async ({ page })
   expect(attribution.utm_source).toBe("instagram");
   expect(attribution.utm_campaign).toBe(campaign);
 
-  const propertyResponse = await page.request.get(`/api/v1/admin/properties/${inquiry.listing}/`);
-  expect(propertyResponse.status()).toBe(200);
-  const property = await propertyResponse.json();
-  const csrf = (await page.context().cookies()).find((cookie) => cookie.name === "csrftoken")?.value;
-  expect(csrf).toBeTruthy();
-  const headers = { "X-CSRFToken": csrf! };
-  const visitResponse = await page.request.post("/api/v1/admin/visits/", { headers, data: {
-    lead: inquiry.lead,
-    offering: property.offering,
-    scheduled_at: new Date().toISOString(),
-    status: "COMPLETED",
-    completed_at: new Date().toISOString(),
-  }});
-  expect(visitResponse.status()).toBe(201);
-  const visit = await visitResponse.json();
-  expect(visit.lead).toBe(inquiry.lead);
+  await page.goto("/administracion/visitas");
+  await page.getByRole("button", { name: "Nueva visita" }).click();
+  await page.getByLabel("Cliente").selectOption({ label: "Cliente atribuido E2E" });
+  await page.getByLabel("Propiedad").selectOption({ label: "Dúplex E2E 1" });
+  await page.getByLabel("Fecha y hora").fill(new Date(Date.now() + 86_400_000).toISOString().slice(0, 16));
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  const visitRow = page.getByRole("row").filter({ hasText: "Cliente atribuido E2E" });
+  await expect(visitRow).toBeVisible();
+  await visitRow.getByRole("button", { name: "Abrir" }).click();
+  await page.getByLabel("Estado").selectOption("COMPLETED");
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
 
-  const saleResponse = await page.request.post("/api/v1/admin/sales/", { headers, data: {
-    lead: inquiry.lead,
-    offering: property.offering,
-    listing: inquiry.listing,
-    sale_price: "1500000.00",
-    closed_at: new Date().toISOString(),
-    status: "CLOSED",
-  }});
-  expect(saleResponse.status()).toBe(201);
-  const sale = await saleResponse.json();
-  expect(sale.lead).toBe(inquiry.lead);
+  await page.goto("/administracion/ventas");
+  await page.getByRole("button", { name: "Registrar venta" }).click();
+  await page.getByLabel("Cliente").selectOption({ label: "Cliente atribuido E2E" });
+  await page.getByLabel("Propiedad").selectOption({ label: "Dúplex E2E 1" });
+  await page.getByLabel("Precio de venta").fill("1500000");
+  await page.getByLabel("Fecha de cierre").fill(new Date().toISOString().slice(0, 16));
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(page.getByRole("row").filter({ hasText: "Cliente atribuido E2E" })).toBeVisible();
+
+  const visits = await (await page.request.get("/api/v1/admin/visits/?page_size=100")).json();
+  const visit = visits.results.find((item: { lead: string }) => item.lead === inquiry.lead);
+  const sales = await (await page.request.get("/api/v1/admin/sales/?page_size=100")).json();
+  const sale = sales.results.find((item: { lead: string }) => item.lead === inquiry.lead);
+  expect(visit.status).toBe("COMPLETED");
+  expect(sale.status).toBe("CLOSED");
 
   const marketingResponse = await page.request.get("/api/v1/admin/bi/marketing/?days=30");
   expect(marketingResponse.status()).toBe(200);
   const marketing = await marketingResponse.json();
-  const row = marketing.find((item: { utm_campaign: string }) => item.utm_campaign === campaign);
-  expect(row).toMatchObject({ sessions: 1, inquiries: 1, visits: 1, sales: 1 });
+  const row = marketing.campaigns.find((item: { utm_campaign: string }) => item.utm_campaign === campaign);
+  expect(row).toMatchObject({ sessions: 1, inquiries: 1, completed_visits: 1, closed_sales: 1 });
   assertNoErrors();
 });

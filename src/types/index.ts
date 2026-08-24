@@ -74,6 +74,7 @@ export interface Property {
   constructionAreaBasis?: "EXACT" | "UP_TO" | "FROM" | "RANGE" | "UNKNOWN";
   landAreaBasis?: "EXACT" | "UP_TO" | "FROM" | "RANGE" | "UNKNOWN";
   gardenAreaBasis?: "EXACT" | "UP_TO" | "FROM" | "RANGE" | "UNKNOWN";
+  amenitySlugs?: string[];
   heroMediaId?: string;
   mediaAssets?: Array<{ mediaId: string; role: "HERO" | "GALLERY" | "FLOORPLAN" | "DOCUMENT"; sortOrder: number; url?: string }>;
   archivedAt?: string;
@@ -87,6 +88,10 @@ export interface SearchOptions {
 }
 
 export interface ApiPage<T> { count: number; next: string | null; previous: string | null; results: T[] }
+export interface SearchFacets {
+  property_types: Array<{ offering__property_type__code: string; offering__property_type__name: string; count: number }>;
+  conditions: Array<{ offering__condition: "NEW" | "USED"; count: number }>;
+}
 
 export interface Development {
   id: string;
@@ -119,6 +124,9 @@ export interface Development {
   mediaAssets?: Array<{ mediaId: string; role: "HERO" | "GALLERY" | "FLOORPLAN" | "DOCUMENT"; sortOrder: number; url?: string }>;
   heroMediaId?: string;
   version?: number;
+  publishedListingCount?: number;
+  availableListingCount?: number;
+  currentMinPrice?: number;
 }
 
 export interface Location {
@@ -151,6 +159,8 @@ export interface Guide {
   featured: boolean;
   createdAt: string;
   viewCount?: number;
+  heroMediaId?: string;
+  version?: number;
 }
 
 export interface Inquiry {
@@ -166,6 +176,7 @@ export interface Inquiry {
   sessionId?: string;
   visitorId?: string;
   subject?: string;
+  privacyConsent: boolean;
   status: "new" | "viewed" | "attended";
 }
 
@@ -179,6 +190,10 @@ export interface HeroSlide {
   active: boolean;
 }
 export interface HomeContent {
+  id?: string;
+  version?: number;
+  heroEyebrow: string;
+  heroTitle: string;
   heroSlides: HeroSlide[];
   featuredPropertyIds: string[];
   featuredLocationIds: string[];
@@ -186,6 +201,7 @@ export interface HomeContent {
   editorialTitle: string;
   editorialBody: string;
   editorialImage: string;
+  editorialMediaId?: string;
 }
 
 export interface PropertyFilters {

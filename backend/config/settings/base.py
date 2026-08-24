@@ -23,6 +23,9 @@ DJANGO_APPS = [
 ENABLE_TECHNICAL_ADMIN = os.environ.get("ENABLE_TECHNICAL_ADMIN", "false").lower() == "true"
 if ENABLE_TECHNICAL_ADMIN:
     DJANGO_APPS.append("django.contrib.admin")
+STORAGE_BACKEND = os.environ.get("STORAGE_BACKEND", "local").lower()
+if STORAGE_BACKEND == "s3":
+    DJANGO_APPS.append("storages")
 THIRD_PARTY_APPS = ["rest_framework", "django_filters", "django_otp", "django_otp.plugins.otp_totp", "drf_spectacular"]
 LOCAL_APPS = [
     "apps.common",
@@ -85,6 +88,8 @@ if os.environ.get("DATABASE_URL"):
         "NAME": unquote(parsed.path.lstrip("/")), "USER": unquote(parsed.username or ""),
         "PASSWORD": unquote(parsed.password or ""), "HOST": parsed.hostname or "", "PORT": str(parsed.port or 5432),
     })
+if os.environ.get("DB_SSL_REQUIRE", "false").lower() == "true":
+    DATABASES["default"]["OPTIONS"] = {"sslmode": "require"}
 
 AUTH_USER_MODEL = "accounts.User"
 AUTHENTICATION_BACKENDS = ["django.contrib.auth.backends.ModelBackend"]
@@ -100,8 +105,22 @@ TIME_ZONE = "America/Mexico_City"
 USE_I18N = True
 USE_TZ = True
 STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+if STORAGE_BACKEND == "s3":
+    STORAGES = {
+        "default": {"BACKEND": "storages.backends.s3.S3Storage"},
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+    AWS_ACCESS_KEY_ID = os.environ.get("S3_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY = os.environ.get("S3_SECRET_ACCESS_KEY")
+    AWS_STORAGE_BUCKET_NAME = os.environ.get("S3_BUCKET_NAME")
+    AWS_S3_ENDPOINT_URL = os.environ.get("S3_ENDPOINT_URL") or None
+    AWS_S3_REGION_NAME = os.environ.get("S3_REGION") or None
+    AWS_S3_CUSTOM_DOMAIN = os.environ.get("S3_CUSTOM_DOMAIN") or None
+    AWS_QUERYSTRING_AUTH = False
+    AWS_DEFAULT_ACL = None
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 SESSION_COOKIE_HTTPONLY = True

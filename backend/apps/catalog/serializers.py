@@ -63,7 +63,7 @@ class DevelopmentSerializer(serializers.ModelSerializer):
         return [link.amenity.name for link in obj.developmentamenity_set.select_related("amenity").order_by("amenity__sort_order", "amenity__name")]
 
     def get_media(self, obj):
-        return [{"media_id": str(link.media_id), "role": link.role, "sort_order": link.sort_order, "url": f"/media/{link.media.storage_key}"} for link in obj.media_links.select_related("media").order_by("sort_order")]
+        return [{"media_id": str(link.media_id), "role": link.role, "sort_order": link.sort_order, "url": link.media.url} for link in obj.media_links.select_related("media").order_by("sort_order")]
 
     def validate_media_input(self, values):
         if sum(item.get("role") == "HERO" for item in values) > 1:

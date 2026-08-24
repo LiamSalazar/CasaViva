@@ -45,7 +45,7 @@ erDiagram
   SLUG_REDIRECT { uuid id PK string old_path UK string new_path datetime created_at }
   LEAD { uuid id PK string first_name string last_name string email string phone_raw string phone_normalized string status uuid owner_user_id FK string first_source string last_source integer version datetime archived_at }
   LEAD_STAGE_HISTORY { uuid id PK uuid lead_id FK string stage datetime started_at datetime ended_at uuid changed_by_id FK }
-  INQUIRY { uuid id PK uuid lead_id FK uuid listing_id FK string channel text message uuid session_id string status uuid assigned_to_id FK }
+  INQUIRY { uuid id PK uuid lead_id FK uuid listing_id FK string channel string intent string subject text message uuid session_id string status uuid assigned_to_id FK }
   LEAD_INTEREST { uuid id PK uuid lead_id FK uuid offering_id FK string interest_type datetime created_at }
   VISIT { uuid id PK uuid lead_id FK uuid offering_id FK datetime scheduled_at string status datetime completed_at uuid assigned_to_id FK text notes }
   SALE { uuid id PK uuid lead_id FK uuid offering_id FK uuid listing_id FK decimal sale_price decimal commission_rate decimal commission_amount datetime closed_at string status uuid created_by_id FK }
@@ -55,8 +55,9 @@ erDiagram
   WEB_SESSION { uuid id PK uuid visitor_id FK uuid lead_id FK datetime started_at datetime last_seen_at string utm_source string utm_medium string utm_campaign string landing_path string consent_state }
   ANALYTICS_EVENT { uuid id PK datetime occurred_at datetime received_at string event_name integer schema_version uuid visitor_id FK uuid session_id FK uuid lead_id FK uuid listing_id FK uuid offering_id FK uuid development_id FK json properties uuid listing_public_key string listing_title_snapshot }
   MARKETING_CAMPAIGN { uuid id PK string name string utm_campaign UK string channel date start_date date end_date boolean is_active integer version datetime archived_at }
-  MARKETING_SPEND { uuid id PK uuid campaign_id FK date date decimal amount string currency }
+  MARKETING_SPEND { uuid id PK uuid campaign_id FK date date decimal amount string currency boolean is_voided datetime voided_at uuid voided_by_id FK string void_reason }
   HOME_CONTENT { uuid id PK string key UK string hero_title string editorial_title text editorial_body uuid editorial_media_id FK integer version datetime archived_at }
+  HOME_HERO_SLIDE { uuid id PK uuid home_content_id FK uuid listing_id FK string eyebrow_override string title_override string subtitle_override integer sort_order boolean is_active integer version datetime archived_at }
   GUIDE { uuid id PK string slug UK string title text excerpt text content string category uuid hero_media_id FK boolean is_published boolean is_featured datetime published_at integer version datetime archived_at }
   LOCATION_CONTENT { uuid id PK uuid municipality_id FK string slug UK text description uuid hero_media_id FK boolean is_featured decimal latitude decimal longitude integer version datetime archived_at }
   AUDIT_EVENT { uuid id PK datetime occurred_at uuid actor_user_id FK string action string entity_type string entity_id json old_values json new_values string request_id string ip_hash boolean success text reason }
@@ -82,6 +83,8 @@ erDiagram
   MEDIA_ASSET ||--o{ DEVELOPMENT_MEDIA : enlaza
   MEDIA_ASSET ||--o{ OFFERING_MEDIA : enlaza
   MEDIA_ASSET ||--o{ LISTING_MEDIA : enlaza
+  HOME_CONTENT ||--o{ HOME_HERO_SLIDE : ordena
+  LISTING ||--o{ HOME_HERO_SLIDE : presenta
   PROPERTY_OFFERING ||--o{ PRICE_RECORD : historiza
   PROPERTY_OFFERING ||--o{ AVAILABILITY_RECORD : historiza
   PROPERTY_OFFERING ||--o| LISTING : publica

@@ -6,9 +6,8 @@ from .models import AvailabilityRecord, Listing, PriceRecord
 def media_url(asset):
     if not asset:
         return None
-    request = None
     try:
-        return asset.storage_key if asset.storage_key.startswith("http") else f"/media/{asset.storage_key}"
+        return asset.url
     except Exception:
         return None
 
@@ -98,6 +97,7 @@ class PublicListingSerializer(serializers.ModelSerializer):
     landAreaBasis = serializers.CharField(source="offering.land_area_basis", allow_null=True)
     gardenM2 = serializers.SerializerMethodField()
     amenities = serializers.SerializerMethodField()
+    amenitySlugs = serializers.SerializerMethodField()
     developerId = serializers.SerializerMethodField()
     developerName = serializers.SerializerMethodField()
     developmentId = serializers.SerializerMethodField()
@@ -105,6 +105,7 @@ class PublicListingSerializer(serializers.ModelSerializer):
     modelName = serializers.SerializerMethodField()
     heroImage = serializers.SerializerMethodField()
     gallery = serializers.SerializerMethodField()
+    floorplans = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
     published = serializers.BooleanField(source="is_published")
     featured = serializers.BooleanField(source="is_featured")
@@ -114,7 +115,7 @@ class PublicListingSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Listing
-        fields = ["id", "slug", "title", "propertyType", "propertyTypeName", "sourceType", "condition", "status", "published", "featured", "price", "priceMax", "currency", "priceLabel", "state", "municipality", "neighborhood", "latitude", "longitude", "bedrooms", "bathrooms", "fullBathrooms", "halfBathrooms", "parkingSpaces", "constructionM2", "constructionAreaBasis", "landM2", "landAreaBasis", "gardenM2", "shortDescription", "description", "amenities", "developerId", "developerName", "developmentId", "developmentName", "modelName", "heroImage", "gallery", "createdAt", "updatedAt"]
+        fields = ["id", "slug", "title", "propertyType", "propertyTypeName", "sourceType", "condition", "status", "published", "featured", "price", "priceMax", "currency", "priceLabel", "state", "municipality", "neighborhood", "latitude", "longitude", "bedrooms", "bathrooms", "fullBathrooms", "halfBathrooms", "parkingSpaces", "constructionM2", "constructionAreaBasis", "landM2", "landAreaBasis", "gardenM2", "shortDescription", "description", "amenities", "amenitySlugs", "developerId", "developerName", "developmentId", "developmentName", "modelName", "heroImage", "gallery", "floorplans", "createdAt", "updatedAt"]
 
     def current_price(self, obj):
         cached = getattr(obj.offering, "prices_cache", None)
@@ -145,6 +146,11 @@ class PublicListingSerializer(serializers.ModelSerializer):
         if links is not None:
             return [link.amenity.name for link in links]
         return list(OfferingAmenity.objects.filter(offering=obj.offering).values_list("amenity__name", flat=True))
+    def get_amenitySlugs(self, obj):
+        links = getattr(obj.offering, "amenity_links_cache", None)
+        if links is not None:
+            return [link.amenity.slug for link in links]
+        return list(OfferingAmenity.objects.filter(offering=obj.offering).values_list("amenity__slug", flat=True))
     def link(self, obj): return obj.offering.development_model
     def get_developerId(self, obj): return self.link(obj).development.developer_id if self.link(obj) else None
     def get_developerName(self, obj): return self.link(obj).development.developer.name if self.link(obj) else None
@@ -157,6 +163,7 @@ class PublicListingSerializer(serializers.ModelSerializer):
     def get_heroImage(self, obj):
         link = next((x for x in self.media(obj) if x.role == "HERO"), None); return media_url(link.media) if link else None
     def get_gallery(self, obj): return [media_url(x.media) for x in self.media(obj) if x.role in ("HERO", "GALLERY")]
+    def get_floorplans(self, obj): return [media_url(x.media) for x in self.media(obj) if x.role == "FLOORPLAN"]
     def get_status(self, obj):
         cached = getattr(obj.offering, "availability_cache", None)
         current = cached[0] if cached else (obj.offering.availability_history.filter(effective_to__isnull=True).first() if cached is None else None)

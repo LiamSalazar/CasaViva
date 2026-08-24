@@ -5,7 +5,9 @@ from rest_framework.test import APIClient
 from apps.accounts.models import User
 from django.contrib.auth.models import Group
 from django.contrib.auth.models import Permission
-from apps.marketing.models import MarketingCampaign
+from apps.marketing.models import MarketingCampaign, MarketingSpend
+from apps.audit.models import AuditEvent
+from apps.catalog.models import Developer
 
 
 def verified_client(user):
@@ -127,6 +129,33 @@ def test_founder_deactivates_campaign_instead_of_deleting_history(catalog):
 
 
 @pytest.mark.django_db
+def test_marketing_spend_is_voided_not_deleted_and_mxn_is_enforced(admin_client):
+    campaign = MarketingCampaign.objects.create(name="Gasto", utm_campaign="gasto", channel="Social", start_date=timezone.now().date())
+    invalid = admin_client.post("/api/v1/admin/marketing-spend/", {"campaign": str(campaign.id), "date": timezone.now().date(), "amount": "100", "currency": "USD"}, format="json")
+    assert invalid.status_code == 400
+    created = admin_client.post("/api/v1/admin/marketing-spend/", {"campaign": str(campaign.id), "date": timezone.now().date(), "amount": "100", "currency": "MXN"}, format="json")
+    assert created.status_code == 201, created.data
+    assert admin_client.delete(f"/api/v1/admin/marketing-spend/{created.data['id']}/").status_code == 405
+    voided = admin_client.post(f"/api/v1/admin/marketing-spend/{created.data['id']}/void/", {"reason": "Captura duplicada por error"}, format="json")
+    assert voided.status_code == 200, voided.data
+    spend = MarketingSpend.objects.get(pk=created.data["id"])
+    assert spend.is_voided and str(spend.voided_by_id) == admin_client.session.get("_auth_user_id")
+
+
+@pytest.mark.django_db
+def test_admin_user_update_validates_password_email_and_forbidden_fields(admin_client):
+    call_command("seed_system")
+    first = User.objects.create_user(email="first-user@example.test", password="A-secure-test-password!", first_name="First")
+    first.groups.add(Group.objects.get(name="Founder Admin"))
+    second = User.objects.create_user(email="second-user@example.test", password="A-secure-test-password!", first_name="Second")
+    second.groups.add(Group.objects.get(name="Founder Admin"))
+    assert admin_client.patch(f"/api/v1/admin/users/{first.id}/", {"password": "short"}, format="json").status_code == 400
+    assert admin_client.patch(f"/api/v1/admin/users/{first.id}/", {"email": "not-an-email"}, format="json").status_code == 400
+    assert admin_client.patch(f"/api/v1/admin/users/{first.id}/", {"email": second.email.upper()}, format="json").status_code == 400
+    assert admin_client.patch(f"/api/v1/admin/users/{first.id}/", {"is_superuser": True}, format="json").status_code == 400
+
+
+@pytest.mark.django_db
 def test_legacy_listing_endpoint_cannot_bypass_property_lifecycle(admin_client, catalog):
     listing = catalog["listing"]
     assert admin_client.patch(f"/api/v1/admin/listings/{listing.id}/", {"title": "Bypass", "version": listing.version}, format="json").status_code == 405
@@ -142,3 +171,26 @@ def test_legacy_listing_endpoint_cannot_bypass_property_lifecycle(admin_client, 
     assert bypass.status_code == 400
     offering.refresh_from_db()
     assert offering.internal_notes is None
+
+
+@pytest.mark.django_db
+def test_archived_empty_business_catalog_can_be_hard_deleted_with_audit(admin_client):
+    developer = Developer.objects.create(name="Captura errónea", slug="captura-erronea")
+    assert admin_client.delete(f"/api/v1/admin/developers/{developer.id}/").status_code == 204
+    preview = admin_client.get(f"/api/v1/admin/developers/{developer.id}/delete-preview/")
+    assert preview.status_code == 200 and preview.data["can_delete"] is True
+    deleted = admin_client.post(f"/api/v1/admin/developers/{developer.id}/hard-delete/", {"confirmation": developer.name, "reason": "Registro duplicado creado por error"}, format="json")
+    assert deleted.status_code == 204, deleted.data
+    assert not Developer.all_objects.filter(pk=developer.id).exists()
+    assert AuditEvent.objects.filter(entity_id=str(developer.id), action="HARD_DELETE").exists()
+
+
+@pytest.mark.django_db
+def test_business_catalog_with_relations_cannot_be_hard_deleted(admin_client, catalog):
+    developer = catalog["developer"]
+    assert admin_client.delete(f"/api/v1/admin/developers/{developer.id}/").status_code == 204
+    preview = admin_client.get(f"/api/v1/admin/developers/{developer.id}/delete-preview/")
+    assert preview.status_code == 200 and preview.data["can_delete"] is False
+    blocked = admin_client.post(f"/api/v1/admin/developers/{developer.id}/hard-delete/", {"confirmation": developer.name, "reason": "Intento de eliminación protegida"}, format="json")
+    assert blocked.status_code == 400
+    assert Developer.all_objects.filter(pk=developer.id).exists()

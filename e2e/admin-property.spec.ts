@@ -44,7 +44,8 @@ test("propiedad particular conserva campos, precio, publicación, consulta, arch
   await expect(page).toHaveURL(/\/administracion\/propiedades$/);
   const row = page.getByRole("row").filter({ hasText: title });
   await expect(row).toBeVisible();
-  await row.getByTitle("Editar").click();
+  await row.getByRole("link", { name: "Editar" }).click();
+  await expect(page).toHaveURL(/\/administracion\/propiedades\/[0-9a-f-]+$/, { timeout: 30_000 });
   await expect(page.getByLabel("Dirección")).toHaveValue("Calle Integridad 42");
   await expect(page.getByLabel("Latitud")).toHaveValue("19.713456");
   await expect(page.getByLabel("Longitud")).toHaveValue("-98.968765");

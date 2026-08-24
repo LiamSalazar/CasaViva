@@ -4,7 +4,7 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from apps.audit.services import audit_event
-from .models import ConsentRecord, Inquiry, Lead, LeadInterest, LeadStageHistory, Sale
+from .models import ConsentRecord, Inquiry, Lead, LeadInterest, LeadStageHistory, Sale, Visit
 
 
 def normalize_phone(value):
@@ -17,7 +17,10 @@ def normalize_phone(value):
 
 
 @transaction.atomic
-def create_inquiry(*, first_name, last_name=None, email=None, phone=None, message=None, listing=None, session_id=None, visitor_id=None, source="WEB", privacy_notice_version=None):
+def create_inquiry(*, first_name, last_name=None, email=None, phone=None, message=None,
+                   listing=None, session_id=None, visitor_id=None, source="WEB",
+                   privacy_notice_version=None, intent=Inquiry.Intent.INFORMATION,
+                   subject=None):
     email = email.lower().strip() if email else None
     normalized = normalize_phone(phone)
     lead = Lead.all_objects.filter(email=email, archived_at__isnull=True).first() if email else None
@@ -55,16 +58,75 @@ def create_inquiry(*, first_name, last_name=None, email=None, phone=None, messag
             lead.first_source = attribution_source
         lead.last_source = attribution_source
         lead.save(update_fields=["first_source", "last_source", "updated_at"])
-    inquiry = Inquiry.objects.create(lead=lead, listing=listing, channel=Inquiry.Channel.WEB, message=message, session_id=web_session.id if web_session else None)
+    inquiry = Inquiry.objects.create(
+        lead=lead, listing=listing, channel=Inquiry.Channel.WEB, intent=intent,
+        subject=subject, message=message, session_id=web_session.id if web_session else None,
+    )
     if privacy_notice_version:
+        purpose = {
+            Inquiry.Intent.INFORMATION: "PROPERTY_INQUIRY",
+            Inquiry.Intent.VISIT_REQUEST: "VISIT_REQUEST",
+            Inquiry.Intent.GENERAL_CONTACT: "GENERAL_CONTACT",
+        }[intent]
         ConsentRecord.objects.create(
             lead=lead, visitor_id=web_session.visitor_id if web_session else None,
-            privacy_notice_version=privacy_notice_version, purpose="PROPERTY_INQUIRY",
-            granted=True, granted_at=timezone.now(), source=source,
+            privacy_notice_version=privacy_notice_version, purpose=purpose,
+            granted=True, granted_at=timezone.now(), source="PUBLIC_WEB",
         )
     if listing:
         LeadInterest.objects.create(lead=lead, offering=listing.offering, interest_type=LeadInterest.Type.INQUIRED)
     return inquiry
+
+
+@transaction.atomic
+def create_visit(*, lead, offering, scheduled_at, actor, assigned_to=None, notes=None,
+                 status=Visit.Status.SCHEDULED):
+    if not actor.has_perm("crm.manage_visits"):
+        raise PermissionDenied()
+    if status not in Visit.Status.values:
+        raise ValidationError({"status": "Selecciona un estado de visita válido."})
+    visit = Visit.objects.create(
+        lead=lead, offering=offering, scheduled_at=scheduled_at, status=status,
+        assigned_to=assigned_to, notes=notes,
+        completed_at=timezone.now() if status == Visit.Status.COMPLETED else None,
+    )
+    if status == Visit.Status.SCHEDULED and lead.status not in (Lead.Status.WON, Lead.Status.LOST, Lead.Status.VISIT_SCHEDULED, Lead.Status.NEGOTIATING):
+        _set_lead_stage(lead, Lead.Status.VISIT_SCHEDULED, actor)
+    audit_event(actor, "VISIT_SCHEDULED" if status == Visit.Status.SCHEDULED else "CREATE", visit)
+    return visit
+
+
+@transaction.atomic
+def change_visit_status(visit, new_status, actor, request=None):
+    if not actor.has_perm("crm.manage_visits"):
+        raise PermissionDenied()
+    if new_status not in Visit.Status.values:
+        raise ValidationError({"status": "Selecciona un estado de visita válido."})
+    locked = Visit.objects.select_for_update().select_related("lead").get(pk=visit.pk)
+    old_status = locked.status
+    if old_status == new_status:
+        return locked
+    transitions = {
+        Visit.Status.SCHEDULED: {Visit.Status.COMPLETED, Visit.Status.CANCELLED, Visit.Status.NO_SHOW},
+        Visit.Status.CANCELLED: {Visit.Status.SCHEDULED},
+        Visit.Status.NO_SHOW: {Visit.Status.SCHEDULED},
+        Visit.Status.COMPLETED: set(),
+    }
+    if new_status not in transitions[old_status]:
+        raise ValidationError({"status": "La transición de visita no es válida."})
+    locked.status = new_status
+    locked.completed_at = timezone.now() if new_status == Visit.Status.COMPLETED else None
+    locked.save(update_fields=["status", "completed_at", "updated_at"])
+    if new_status == Visit.Status.SCHEDULED and locked.lead.status not in (Lead.Status.WON, Lead.Status.LOST, Lead.Status.VISIT_SCHEDULED, Lead.Status.NEGOTIATING):
+        _set_lead_stage(locked.lead, Lead.Status.VISIT_SCHEDULED, actor)
+    action = {
+        Visit.Status.SCHEDULED: "VISIT_SCHEDULED",
+        Visit.Status.COMPLETED: "VISIT_COMPLETED",
+        Visit.Status.CANCELLED: "VISIT_CANCELLED",
+        Visit.Status.NO_SHOW: "VISIT_NO_SHOW",
+    }[new_status]
+    audit_event(actor, action, locked, old_values={"status": old_status}, new_values={"status": new_status}, request=request)
+    return locked
 
 
 @transaction.atomic

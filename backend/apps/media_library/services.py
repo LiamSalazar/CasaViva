@@ -49,7 +49,7 @@ def store_upload(upload, actor, media_type=MediaAsset.Type.IMAGE, alt_text=None)
             output = io.BytesIO()
             image.save(output, format="WEBP", quality=88, method=6)
             data, mime, extension = output.getvalue(), "image/webp", "webp"
-        except (UnidentifiedImageError, OSError):
+        except (UnidentifiedImageError, OSError, SyntaxError):
             raise ValidationError("La imagen está dañada.")
     digest = hashlib.sha256(data).hexdigest()
     key = f"media/{uuid.uuid4()}.{extension}"

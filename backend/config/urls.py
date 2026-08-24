@@ -1,5 +1,7 @@
 from django.conf import settings
 from django.conf.urls.static import static
+from django.db import connection
+from django.db.models import Count, Min, Q
 from django.http import HttpResponsePermanentRedirect
 from django.urls import include, path
 from rest_framework.decorators import api_view, permission_classes
@@ -22,6 +24,26 @@ from apps.media_library.views import upload_media
 from drf_spectacular.utils import extend_schema, OpenApiTypes
 
 
+@extend_schema(operation_id="health_live", responses={200: OpenApiTypes.OBJECT})
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def health_live(request):
+    return Response({"status": "ok"})
+
+
+@extend_schema(operation_id="health_ready", responses={200: OpenApiTypes.OBJECT, 503: OpenApiTypes.OBJECT})
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def health_ready(request):
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+    except Exception:
+        return Response({"status": "unavailable"}, status=503)
+    return Response({"status": "ok"})
+
+
 @extend_schema(operation_id="public_locations", responses={200: OpenApiTypes.OBJECT})
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -37,7 +59,7 @@ def locations(request):
                 "id": municipality.id, "name": municipality.name,
                 "slug": content.slug if content else None,
                 "description": content.description if content else "",
-                "heroImage": f"/media/{content.hero_media.storage_key}" if content and content.hero_media_id else None,
+                "heroImage": content.hero_media.url if content and content.hero_media_id else None,
                 "is_featured": content.is_featured if content else False,
                 "latitude": content.latitude if content else None,
                 "longitude": content.longitude if content else None,
@@ -65,14 +87,18 @@ def search_options(request):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def developments(request, slug=None):
-    qs = Development.objects.filter(is_published=True).select_related("developer", "state", "municipality").prefetch_related("amenities", "media_links__media")
+    qs = Development.objects.filter(is_published=True).select_related("developer", "state", "municipality").prefetch_related("amenities", "media_links__media").annotate(
+        published_listing_count=Count("model_links__offerings__listing", filter=Q(model_links__offerings__listing__is_published=True, model_links__offerings__listing__archived_at__isnull=True), distinct=True),
+        available_listing_count=Count("model_links__offerings__listing", filter=Q(model_links__offerings__listing__is_published=True, model_links__offerings__availability_history__status="AVAILABLE", model_links__offerings__availability_history__effective_to__isnull=True), distinct=True),
+        current_min_price=Min("model_links__offerings__prices__amount_min", filter=Q(model_links__offerings__listing__is_published=True, model_links__offerings__prices__effective_to__isnull=True)),
+    )
     if slug:
         qs = qs.filter(slug=slug)
         item = qs.first()
         if not item: return Response(status=404)
         items = [item]
     else: items = qs
-    data = [{"id": d.id, "slug": d.slug, "name": d.name, "developerName": d.developer.name, "description": d.description, "shortDescription": d.short_description, "state": d.state.name, "municipality": d.municipality.name, "latitude": d.latitude, "longitude": d.longitude, "heroImage": next((f"/media/{x.media.storage_key}" for x in d.media_links.all() if x.role == "HERO"), None), "gallery": [f"/media/{x.media.storage_key}" for x in d.media_links.all()], "amenities": [x.name for x in d.amenities.all()], "published": d.is_published, "featured": d.is_featured} for d in items]
+    data = [{"id": d.id, "slug": d.slug, "name": d.name, "developerName": d.developer.name, "description": d.description, "shortDescription": d.short_description, "state": d.state.name, "municipality": d.municipality.name, "latitude": d.latitude, "longitude": d.longitude, "heroImage": next((x.media.url for x in d.media_links.all() if x.role == "HERO"), None), "gallery": [x.media.url for x in d.media_links.all()], "amenities": [x.name for x in d.amenities.all()], "published": d.is_published, "featured": d.is_featured, "publishedListingCount": d.published_listing_count, "availableListingCount": d.available_listing_count, "currentMinPrice": d.current_min_price} for d in items]
     return Response(data[0] if slug else {"results": data})
 
 
@@ -108,6 +134,8 @@ admin_router.register("marketing-campaigns", CampaignViewSet)
 admin_router.register("marketing-spend", SpendViewSet)
 
 urlpatterns = [
+    path("api/health/live/", health_live),
+    path("api/health/ready/", health_ready),
     path("api/v1/auth/login/", account_views.password_login),
     path("api/v1/auth/mfa/enroll/", account_views.enroll_mfa),
     path("api/v1/auth/mfa/verify/", account_views.verify_mfa),
