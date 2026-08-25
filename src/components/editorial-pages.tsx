@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import {
   DevelopmentCard,
   DynamicMapView,
@@ -16,7 +16,7 @@ import { EmptyState, Footer, PublicHeader, useToast } from "@/components/ui";
 import { formatDate, formatLocation, uid } from "@/lib/utils";
 import { inquiryService, useCasaViva } from "@/services";
 import { api } from "@/services/api";
-import type { Guide, Inquiry } from "@/types";
+import type { Guide, Inquiry, Property } from "@/types";
 import { ensureCurrentAnalyticsIdentity, trackEvent } from "@/components/analytics-provider";
 
 export function DevelopmentsPage() {
@@ -56,6 +56,17 @@ export function DevelopmentsPage() {
 export function DevelopmentDetailPage({ slug }: { slug: string }) {
   const { developments, properties } = useCasaViva();
   const d = developments.find((x) => x.slug === slug && x.published);
+  const [models, setModels] = useState<Property[]>([]);
+  const [inventoryLoaded, setInventoryLoaded] = useState(false);
+  const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
+  useEffect(() => {
+    let active = true;
+    if (!d) return () => { active = false; };
+    api.publicListingsAll(`development=${encodeURIComponent(d.id)}`)
+      .then((items) => { if (active) { setModels(items); setInventoryLoaded(true); } })
+      .catch(() => { if (active) { setModels([]); setInventoryLoaded(true); } });
+    return () => { active = false; };
+  }, [d]);
   if (!d)
     return (
       <>
@@ -68,8 +79,8 @@ export function DevelopmentDetailPage({ slug }: { slug: string }) {
         <Footer />
       </>
     );
-  const models = properties.filter(
-    (p) => p.developmentId === d.id && p.published,
+  const moveGallery = (delta: number) => setGalleryIndex((current) =>
+    current === null ? 0 : (current + delta + d.gallery.length) % d.gallery.length,
   );
   return (
     <>
@@ -98,7 +109,7 @@ export function DevelopmentDetailPage({ slug }: { slug: string }) {
           </div>
           <div className="secondary-gallery">
             {d.gallery.slice(0, 5).map((src, i) => (
-              <button key={src}>
+              <button key={src} type="button" onClick={() => setGalleryIndex(i)} aria-label={`Abrir foto ${i + 1} de ${d.name}`}>
                 <Image
                   src={src}
                   alt={`${d.name}, foto ${i + 1}`}
@@ -108,6 +119,21 @@ export function DevelopmentDetailPage({ slug }: { slug: string }) {
               </button>
             ))}
           </div>
+          {galleryIndex !== null && d.gallery.length > 0 && (
+            <div className="fullscreen-gallery" role="dialog" aria-modal="true" aria-label={`Galería de ${d.name}`}>
+              <header>
+                <span>Foto {galleryIndex + 1} / {d.gallery.length}</span>
+                <button className="icon-button" type="button" onClick={() => setGalleryIndex(null)} aria-label="Cerrar"><X /></button>
+              </header>
+              <div className="fullscreen-image">
+                <Image src={d.gallery[galleryIndex]} alt={`${d.name}, foto ${galleryIndex + 1}`} fill sizes="100vw" />
+              </div>
+              {d.gallery.length > 1 && <>
+                <button className="gallery-nav prev" type="button" onClick={() => moveGallery(-1)} aria-label="Anterior"><ChevronLeft /></button>
+                <button className="gallery-nav next" type="button" onClick={() => moveGallery(1)} aria-label="Siguiente"><ChevronRight /></button>
+              </>}
+            </div>
+          )}
         </section>
         <section className="section">
           <div className="section-heading">
@@ -126,19 +152,21 @@ export function DevelopmentDetailPage({ slug }: { slug: string }) {
           <div className="inline-heading">
             <h2>Ubicación</h2>
           </div>
-          <DynamicMapView
-            properties={
-              models.length
-                ? models
-                : [
-                    {
-                      ...properties[0],
-                      latitude: d.latitude,
-                      longitude: d.longitude,
-                    },
-                  ]
-            }
-          />
+          {inventoryLoaded ? (
+            <DynamicMapView
+              properties={
+                models.length
+                  ? models
+                  : [
+                      {
+                        ...properties[0],
+                        latitude: d.latitude,
+                        longitude: d.longitude,
+                      },
+                    ]
+              }
+            />
+          ) : <div className="map-shell skeleton" />}
         </section>
         <section className="section">
           <div className="inline-heading">
@@ -167,6 +195,16 @@ export function DevelopmentDetailPage({ slug }: { slug: string }) {
 export function LocationPage({ slug }: { slug: string }) {
   const { locations, properties, developments, guides } = useCasaViva();
   const location = locations.find((l) => l.slug === slug);
+  const [locationProperties, setLocationProperties] = useState<Property[]>([]);
+  const [inventoryLoaded, setInventoryLoaded] = useState(false);
+  useEffect(() => {
+    let active = true;
+    if (!location) return () => { active = false; };
+    api.publicListingsAll(`municipality=${encodeURIComponent(location.name)}`)
+      .then((items) => { if (active) { setLocationProperties(items); setInventoryLoaded(true); } })
+      .catch(() => { if (active) { setLocationProperties([]); setInventoryLoaded(true); } });
+    return () => { active = false; };
+  }, [location]);
   if (!location)
     return (
       <>
@@ -179,10 +217,7 @@ export function LocationPage({ slug }: { slug: string }) {
         <Footer />
       </>
     );
-  const props = properties.filter(
-    (p) =>
-      p.municipality === location.name && p.published,
-  );
+  const props = locationProperties;
   const devs = developments.filter(
     (d) => d.municipality === location.name && d.published,
   );
@@ -213,7 +248,7 @@ export function LocationPage({ slug }: { slug: string }) {
             <h2>Una mirada clara a {location.name}</h2>
             <p className="editorial-body">{location.description}</p>
           </div>
-          <DynamicMapView properties={props} />
+          {inventoryLoaded ? <DynamicMapView properties={props} /> : <div className="map-shell skeleton" />}
         </section>
         {devs.length > 0 && (
           <section className="section">
@@ -242,7 +277,7 @@ export function LocationPage({ slug }: { slug: string }) {
             </Link>
           </div>
           <div className="property-grid">
-            {props.slice(0, 6).map((p) => (
+            {props.map((p) => (
               <PropertyGridCard property={p} key={p.id} />
             ))}
           </div>

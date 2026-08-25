@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.accounts.services import seed_groups
-from apps.catalog.models import PropertyOffering, PropertyType
+from apps.catalog.models import DevelopmentMedia, DevelopmentModel, PropertyOffering, PropertyType
 from apps.content.models import Guide
 from apps.geo.models import Municipality
 from apps.listings.models import AvailabilityRecord, Listing, ListingMedia, PriceRecord
@@ -102,10 +102,47 @@ class Command(BaseCommand):
                     AvailabilityRecord.objects.create(
                         offering=offering, status="AVAILABLE", effective_from=timezone.now(), changed_by=owner_user,
                     )
+            development_model = DevelopmentModel.objects.select_related("development").first()
+            if development_model:
+                for index in range(30):
+                    reference = f"E2E-DEVELOPMENT-{index:02d}"
+                    offering, _ = PropertyOffering.objects.get_or_create(
+                        internal_reference=reference,
+                        defaults={
+                            "source_type": "DEVELOPER", "condition": "NEW",
+                            "development_model": development_model,
+                            "property_type": property_type, "bedrooms_min": 3,
+                            "bathrooms_total": 2, "levels_min": 2,
+                            "created_by": owner_user, "updated_by": owner_user,
+                        },
+                    )
+                    Listing.objects.get_or_create(
+                        offering=offering,
+                        defaults={
+                            "title": f"Inventario desarrollo E2E {index + 1}",
+                            "slug": f"inventario-desarrollo-e2e-{index + 1}",
+                            "short_description": "Inventario completo aislado para E2E.",
+                            "description": "Propiedad generada exclusivamente en casaviva_test.",
+                            "is_published": True, "published_at": timezone.now(),
+                            "created_by": owner_user, "updated_by": owner_user,
+                        },
+                    )
+                    if not offering.prices.filter(effective_to__isnull=True).exists():
+                        PriceRecord.objects.create(
+                            offering=offering, price_type="FIXED",
+                            amount_min=1_200_000 + index * 10_000, currency="MXN",
+                            effective_from=timezone.now(), created_by=owner_user,
+                        )
+                    if not offering.availability_history.filter(effective_to__isnull=True).exists():
+                        AvailabilityRecord.objects.create(
+                            offering=offering, status="AVAILABLE",
+                            effective_from=timezone.now(), changed_by=owner_user,
+                        )
             gallery_listing = Listing.objects.get(slug="duplex-e2e-1")
             png = b64decode(
                 "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGPkEpFjYGBgYmBgYGBgAAAC5gBAXKUgWwAAAABJRU5ErkJggg=="
             )
+            development_assets = []
             for role, media_type, filename, digest in (
                 ("HERO", "IMAGE", "e2e/property-hero.png", "1" * 64),
                 ("GALLERY", "IMAGE", "e2e/property-gallery.png", "2" * 64),
@@ -132,4 +169,13 @@ class Command(BaseCommand):
                     media=asset,
                     defaults={"role": role, "sort_order": 0 if role == "HERO" else 1},
                 )
+                if role in ("HERO", "GALLERY"):
+                    development_assets.append((role, asset))
+            if development_model:
+                for index, (role, asset) in enumerate(development_assets):
+                    DevelopmentMedia.objects.get_or_create(
+                        development=development_model.development,
+                        media=asset,
+                        defaults={"role": role, "sort_order": index},
+                    )
         self.stdout.write(self.style.SUCCESS("Usuarios E2E aislados listos."))

@@ -126,7 +126,7 @@ export function PropertiesPage() {
         <button className="filter-pill active" onClick={() => setDrawer(true)}>
           <SlidersHorizontal size={14} /> Todos los filtros
         </button>
-        <button className="filter-pill">En venta</button>
+        <span className="filter-pill active" aria-label="Operación: En venta">En venta</span>
         <button
           className={`filter-pill ${filters.propertyType ? "active" : ""}`}
           onClick={() => setDrawer(true)}

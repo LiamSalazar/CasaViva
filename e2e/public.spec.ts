@@ -54,6 +54,32 @@ test("detalle de guía fuera de la primera página usa su endpoint y las galerí
   assertNoErrors();
 });
 
+test("desarrollo y ubicación cargan el inventario completo y la galería del desarrollo es interactiva", async ({ page }) => {
+  test.setTimeout(60_000);
+  const assertNoErrors = failOnPageErrors(page);
+  const developmentsResponse = await page.request.get("/api/v1/public/developments/");
+  const developments = (await developmentsResponse.json()).results as Array<{ slug: string; publishedListingCount: number }>;
+  const development = developments.find((item) => item.publishedListingCount > 24);
+  expect(development).toBeTruthy();
+
+  await page.goto(`/desarrollos/${development!.slug}`);
+  await expect(page.getByText("Inventario desarrollo E2E 1", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /Abrir foto 2 de/ }).click();
+  await expect(page.getByRole("dialog", { name: /Galería de/ })).toContainText("Foto 2 / 2");
+  await page.getByRole("button", { name: "Cerrar" }).click();
+
+  const propertyResponse = await page.request.get("/api/v1/public/listings/duplex-e2e-1/");
+  const municipality = (await propertyResponse.json()).municipality as string;
+  const locationsResponse = await page.request.get("/api/v1/public/locations/");
+  const states = await locationsResponse.json() as Array<{ municipalities: Array<{ name: string; slug: string | null }> }>;
+  const location = states.flatMap((state) => state.municipalities).find((item) => item.name === municipality);
+  expect(location).toBeTruthy();
+  const locationSlug = location!.slug || location!.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-");
+  await page.goto(`/ubicaciones/${locationSlug}`);
+  await expect(page.getByText("Dúplex E2E 1", { exact: true })).toBeVisible();
+  assertNoErrors();
+});
+
 test("@mobile mantiene accesibles home, resultados y detalle", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("h1")).toBeVisible();

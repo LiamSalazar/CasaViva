@@ -40,6 +40,7 @@ def create_inquiry(*, first_name, last_name=None, email=None, phone=None, messag
     web_session = None
     if session_id:
         from apps.analytics.models import AnalyticsEvent, WebSession
+        from apps.analytics.attribution import first_touch_session
         web_session = WebSession.objects.select_for_update().filter(pk=session_id).first()
         if web_session is None:
             raise ValidationError({"session_id": "La sesión de navegación no existe."})
@@ -53,10 +54,35 @@ def create_inquiry(*, first_name, last_name=None, email=None, phone=None, messag
             web_session.lead = lead
             web_session.save(update_fields=["lead", "updated_at"])
         AnalyticsEvent.objects.filter(session=web_session, lead__isnull=True).update(lead=lead)
-        attribution_source = web_session.utm_source or source
+        visitor_has_conflicting_lead = WebSession.objects.filter(
+            visitor_id=web_session.visitor_id, lead__isnull=False,
+        ).exclude(lead=lead).exists()
+        prior_session_ids = []
+        if not visitor_has_conflicting_lead:
+            candidate_ids = list(
+                WebSession.objects.select_for_update().filter(
+                    visitor_id=web_session.visitor_id,
+                    lead__isnull=True,
+                    started_at__lte=web_session.started_at,
+                ).values_list("id", flat=True),
+            )
+            conflicting_ids = set(
+                AnalyticsEvent.objects.filter(
+                    session_id__in=candidate_ids, lead__isnull=False,
+                ).values_list("session_id", flat=True),
+            )
+            prior_session_ids = [item for item in candidate_ids if item not in conflicting_ids]
+        if prior_session_ids:
+            WebSession.objects.filter(id__in=prior_session_ids).update(lead=lead)
+            AnalyticsEvent.objects.filter(
+                session_id__in=prior_session_ids,
+                lead__isnull=True,
+            ).update(lead=lead)
+        first_session = first_touch_session(lead) or web_session
+        attribution_source = first_session.utm_source or source
         if lead.first_source in (None, "", source):
             lead.first_source = attribution_source
-        lead.last_source = attribution_source
+        lead.last_source = web_session.utm_source or source
         lead.save(update_fields=["first_source", "last_source", "updated_at"])
     inquiry = Inquiry.objects.create(
         lead=lead, listing=listing, channel=Inquiry.Channel.WEB, intent=intent,

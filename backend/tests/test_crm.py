@@ -150,6 +150,56 @@ def test_public_inquiry_listing_and_session_attribution(client, catalog):
 
 
 @pytest.mark.django_db
+def test_inquiry_uses_first_touch_from_an_earlier_session_of_the_same_visitor(client):
+    from apps.analytics.attribution import first_touch_session, with_first_touch
+
+    call_command("seed_system")
+    now = timezone.now()
+    visitor = AnonymousVisitor.objects.create(
+        first_seen_at=now - timedelta(days=2), last_seen_at=now,
+    )
+    other_visitor = AnonymousVisitor.objects.create(
+        first_seen_at=now - timedelta(days=3), last_seen_at=now,
+    )
+    unrelated = WebSession.objects.create(
+        visitor=other_visitor, started_at=now - timedelta(days=3),
+        last_seen_at=now - timedelta(days=3), landing_path="/",
+        consent_state="ESSENTIAL", utm_source="google", utm_campaign="otra-campana",
+    )
+    first = WebSession.objects.create(
+        visitor=visitor, started_at=now - timedelta(days=2),
+        last_seen_at=now - timedelta(days=2), landing_path="/?utm_campaign=campaign-a",
+        consent_state="ESSENTIAL", utm_source="facebook", utm_campaign="campaign-a",
+    )
+    current = WebSession.objects.create(
+        visitor=visitor, started_at=now, last_seen_at=now, landing_path="/contacto",
+        consent_state="ESSENTIAL",
+    )
+
+    response = client.post(
+        "/api/v1/public/inquiries/",
+        {
+            "first_name": "Dos sesiones", "email": "dos-sesiones@example.test",
+            "privacy_consent": True, "session_id": str(current.id),
+            "visitor_id": str(visitor.id),
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    lead = Inquiry.objects.get(pk=response.data["id"]).lead
+    first.refresh_from_db(); current.refresh_from_db(); unrelated.refresh_from_db(); lead.refresh_from_db()
+    assert first.lead_id == current.lead_id == lead.id
+    assert unrelated.lead_id is None
+    assert first_touch_session(lead).id == first.id
+    annotated = with_first_touch(Lead.objects.filter(pk=lead.pk)).get()
+    assert annotated.first_session_id == first.id
+    assert annotated.acquired_campaign == "campaign-a"
+    assert annotated.acquired_source == "facebook"
+    assert lead.first_source == "facebook"
+
+
+@pytest.mark.django_db
 def test_public_inquiry_validates_listing_and_session_conflicts(client, catalog):
     call_command("seed_system")
     general = client.post(

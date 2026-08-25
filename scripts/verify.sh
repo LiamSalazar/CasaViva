@@ -7,6 +7,7 @@ backend_python="$repository_dir/backend/.venv/bin/python"
 backend_pytest="$repository_dir/backend/.venv/bin/pytest"
 backend_image="casaviva-backend-verify:local"
 frontend_image="casaviva-frontend-verify:local"
+backend_health_container="casaviva-backend-health-verify"
 test_media_dir="${TMPDIR:-/tmp}/casaviva-postgres-test-media"
 
 export POSTGRES_TEST_DB="${POSTGRES_TEST_DB:-casaviva_test}"
@@ -28,6 +29,7 @@ export E2E_TOTP_SECRET='3132333435363738393031323334353637383930'
 export CASAVIVA_E2E=1
 
 cleanup() {
+  docker rm -f "$backend_health_container" >/dev/null 2>&1 || true
   docker compose -f "$test_compose" down -v --remove-orphans >/dev/null 2>&1 || true
   docker image rm "$backend_image" "$frontend_image" >/dev/null 2>&1 || true
   if [[ -d "$test_media_dir" ]]; then
@@ -80,6 +82,21 @@ CASAVIVA_BACKUP_PASSWORD=verify-only \
 docker compose config --quiet
 docker compose -f "$test_compose" config --quiet
 docker build --file docker/backend.Dockerfile --tag "$backend_image" .
+docker run --detach --name "$backend_health_container" --network host \
+  --env DJANGO_SECRET_KEY='verify-only-not-a-real-secret-5d377ab8dd7c90b3bd83112d5375fa57' \
+  --env DATABASE_URL='postgresql://casaviva_app:casaviva-app-test@127.0.0.1:55432/casaviva_test' \
+  --env ALLOWED_HOSTS='127.0.0.1,localhost' \
+  --env CSRF_TRUSTED_ORIGINS='https://127.0.0.1,https://localhost' \
+  "$backend_image" >/dev/null
+for _ in $(seq 1 35); do
+  health_status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$backend_health_container")"
+  [[ "$health_status" == "healthy" ]] && break
+  [[ "$health_status" == "unhealthy" ]] && docker logs "$backend_health_container" && exit 1
+  sleep 2
+done
+[[ "${health_status:-missing}" == "healthy" ]]
+docker exec "$backend_health_container" python -c "import os; from django.conf import settings; assert os.environ['DJANGO_SETTINGS_MODULE'] == 'config.settings.production'; assert settings.DEBUG is False; assert settings.SECURE_SSL_REDIRECT is True"
+docker rm -f "$backend_health_container" >/dev/null
 docker build --file docker/frontend.Dockerfile --build-arg MEDIA_REMOTE_HOSTNAME=media.example.test --tag "$frontend_image" .
 
 npm run lint

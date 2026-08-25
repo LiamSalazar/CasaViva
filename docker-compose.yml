@@ -12,7 +12,7 @@ services:
       CASAVIVA_READONLY_PASSWORD: ${CASAVIVA_READONLY_PASSWORD:?Define CASAVIVA_READONLY_PASSWORD en .env}
       CASAVIVA_BACKUP_PASSWORD: ${CASAVIVA_BACKUP_PASSWORD:?Define CASAVIVA_BACKUP_PASSWORD en .env}
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - casaviva_postgres:/var/lib/postgresql/data
       - ./docker/postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-casaviva-roles.sh:ro
