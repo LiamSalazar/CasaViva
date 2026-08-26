@@ -15,9 +15,9 @@ from django.contrib.auth.models import Group, Permission
 from drf_spectacular.utils import extend_schema, OpenApiTypes
 from apps.audit.services import audit_event
 from .models import RecoveryCode
-from .serializers import AdminUserUpdateSerializer, LoginSerializer, TotpSerializer, UserPermissionsSerializer, UserSerializer
+from .serializers import AdminUserUpdateSerializer, LoginSerializer, RoleSerializer, TotpSerializer, UserPermissionsSerializer, UserSerializer
 from .permissions import IsMfaVerifiedAdmin
-from .services import change_user_access, managed_permissions_queryset, revoke_user_sessions
+from .services import change_user_access, managed_permissions_queryset, reset_permission_overrides, revoke_user_sessions
 from .security import has_recent_mfa
 
 
@@ -120,8 +120,10 @@ def logout_view(request):
 @permission_classes([AllowAny])
 def me(request):
     if not request.user.is_authenticated:
-        return Response({"authenticated": False, "can_manage_users": False})
-    return Response(UserSerializer(request.user).data)
+        return Response({"authenticated": False, "can_manage_users": False, "casaviva_mode": __import__("django.conf", fromlist=["settings"]).settings.CASAVIVA_MODE})
+    data = UserSerializer(request.user).data
+    data["casaviva_mode"] = __import__("django.conf", fromlist=["settings"]).settings.CASAVIVA_MODE
+    return Response(data)
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -174,7 +176,7 @@ class UserViewSet(viewsets.ModelViewSet):
     def permission_options(self, request):
         permissions = managed_permissions_queryset().order_by("content_type__app_label", "codename")
         return Response([
-            {"key": f"{permission.content_type.app_label}.{permission.codename}", "name": permission.name}
+            {"key": f"{permission.content_type.app_label}.{permission.codename}", "name": permission.name, "module": permission.content_type.app_label}
             for permission in permissions
         ])
 
@@ -189,6 +191,11 @@ class UserViewSet(viewsets.ModelViewSet):
         if len(permissions) != len(keys):
             return Response({"detail": "Uno o más permisos no existen."}, status=400)
         change_user_access(request.user, user, permissions=permissions, request=request)
+        return Response(self.get_serializer(user).data)
+
+    @action(detail=True, methods=["post"], url_path="reset-to-role")
+    def reset_to_role(self, request, pk=None):
+        user = reset_permission_overrides(request.user, self.get_object(), request=request)
         return Response(self.get_serializer(user).data)
 
     @action(detail=True, methods=["post"], url_path="revoke-sessions")
@@ -208,3 +215,45 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         return Response({"detail": "Los usuarios se desactivan; no se eliminan definitivamente."}, status=405)
+
+
+class RoleViewSet(viewsets.ModelViewSet):
+    serializer_class = RoleSerializer
+    permission_classes = [IsMfaVerifiedAdmin]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+
+    def get_queryset(self):
+        from django.db.models import Count
+        from .models import RoleProfile
+        return RoleProfile.objects.select_related("group").prefetch_related("group__permissions__content_type").annotate(user_count=Count("group__user", distinct=True)).order_by("group__name")
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if not request.user.is_superuser or not request.user.has_perm("accounts.manage_roles"):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Sólo el Owner puede administrar roles.")
+        if request.method not in ("GET", "HEAD", "OPTIONS") and not has_recent_mfa(request):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Vuelve a verificar tu identidad para cambiar roles.")
+
+    def perform_create(self, serializer):
+        role = serializer.save()
+        audit_event(self.request.user, "ROLE_CREATED", role.group, request=self.request)
+
+    def update(self, request, *args, **kwargs):
+        role = self.get_object()
+        if role.is_owner:
+            return Response({"detail": "Owner es reservado y no puede modificarse."}, status=403)
+        response = super().update(request, *args, **kwargs)
+        audit_event(request.user, "ROLE_CHANGED", role.group, request=request)
+        return response
+
+    def destroy(self, request, *args, **kwargs):
+        role = self.get_object()
+        if role.is_system:
+            return Response({"detail": "Los roles de sistema no pueden eliminarse."}, status=409)
+        if role.group.user_set.exists():
+            return Response({"detail": "El rol está en uso y no puede eliminarse."}, status=409)
+        audit_event(request.user, "ROLE_DELETED", role.group, request=request)
+        role.group.delete()
+        return Response(status=204)

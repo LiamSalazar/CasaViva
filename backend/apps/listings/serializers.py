@@ -13,6 +13,8 @@ def media_url(asset):
 
 
 class PriceRecordSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(source="created_by.full_name", read_only=True, allow_null=True)
+    source_name = serializers.CharField(source="source_record.source_name", read_only=True, allow_null=True)
     class Meta:
         model = PriceRecord
         fields = "__all__"
@@ -38,6 +40,7 @@ class PriceRecordSerializer(serializers.ModelSerializer):
 
 class AvailabilityRecordSerializer(serializers.ModelSerializer):
     status_label = serializers.CharField(source="get_status_display", read_only=True)
+    changed_by_name = serializers.CharField(source="changed_by.full_name", read_only=True, allow_null=True)
     class Meta:
         model = AvailabilityRecord
         fields = "__all__"

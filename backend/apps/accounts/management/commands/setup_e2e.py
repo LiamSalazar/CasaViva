@@ -102,7 +102,12 @@ class Command(BaseCommand):
                     AvailabilityRecord.objects.create(
                         offering=offering, status="AVAILABLE", effective_from=timezone.now(), changed_by=owner_user,
                     )
-            development_model = DevelopmentModel.objects.select_related("development").first()
+            development_model = (
+                DevelopmentModel.objects.select_related("development")
+                .filter(development__is_published=True, development__archived_at__isnull=True)
+                .order_by("development__slug", "created_at")
+                .first()
+            )
             if development_model:
                 for index in range(30):
                     reference = f"E2E-DEVELOPMENT-{index:02d}"
@@ -116,7 +121,10 @@ class Command(BaseCommand):
                             "created_by": owner_user, "updated_by": owner_user,
                         },
                     )
-                    Listing.objects.get_or_create(
+                    if offering.development_model_id != development_model.id:
+                        offering.development_model = development_model
+                        offering.save(update_fields=["development_model", "updated_at"])
+                    development_listing, _ = Listing.objects.get_or_create(
                         offering=offering,
                         defaults={
                             "title": f"Inventario desarrollo E2E {index + 1}",
@@ -127,6 +135,13 @@ class Command(BaseCommand):
                             "created_by": owner_user, "updated_by": owner_user,
                         },
                     )
+                    if not development_listing.is_published or development_listing.archived_at is not None:
+                        development_listing.is_published = True
+                        development_listing.archived_at = None
+                        development_listing.published_at = development_listing.published_at or timezone.now()
+                        development_listing.save(
+                            update_fields=["is_published", "archived_at", "published_at", "updated_at"]
+                        )
                     if not offering.prices.filter(effective_to__isnull=True).exists():
                         PriceRecord.objects.create(
                             offering=offering, price_type="FIXED",

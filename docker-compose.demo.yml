@@ -1,0 +1,64 @@
+name: casaviva-demo
+services:
+  postgres-demo:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: casaviva_demo
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DEMO_POSTGRES_PASSWORD:?Define DEMO_POSTGRES_PASSWORD en .env.demo}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "127.0.0.1:55433:5432"
+    volumes:
+      - casaviva_demo_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d casaviva_demo"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  backend-demo:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres-demo:
+        condition: service_healthy
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DJANGO_SECRET_KEY: ${DEMO_DJANGO_SECRET:?Define DEMO_DJANGO_SECRET en .env.demo}
+      CASAVIVA_MODE: demo
+      POSTGRES_DB: casaviva_demo
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DEMO_POSTGRES_PASSWORD}
+      POSTGRES_HOST: postgres-demo
+      POSTGRES_PORT: 5432
+      ALLOWED_HOSTS: localhost,127.0.0.1,backend-demo
+      CSRF_TRUSTED_ORIGINS: http://localhost:3001,http://127.0.0.1:3001
+      PUBLIC_SITE_URL: http://localhost:3001
+      DEMO_OWNER_PASSWORD: ${DEMO_OWNER_PASSWORD:?Define DEMO_OWNER_PASSWORD en .env.demo}
+      DEMO_TOTP_SECRET: ${DEMO_TOTP_SECRET:?Define DEMO_TOTP_SECRET en .env.demo}
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --access-logfile -
+    ports:
+      - "127.0.0.1:8001:8000"
+    volumes:
+      - casaviva_demo_media:/app/media_demo
+  frontend-demo:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        DJANGO_INTERNAL_URL: http://backend-demo:8000
+    restart: unless-stopped
+    depends_on:
+      - backend-demo
+    environment:
+      PORT: 3000
+    ports:
+      - "127.0.0.1:3001:3000"
+volumes:
+  casaviva_demo_postgres:
+    name: casaviva_demo_postgres
+  casaviva_demo_media:
+    name: casaviva_demo_media

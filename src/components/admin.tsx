@@ -26,6 +26,8 @@ import {
   Handshake,
   ShieldCheck,
   Megaphone,
+  Layers3,
+  KeyRound,
 } from "lucide-react";
 import type {
   Development,
@@ -55,18 +57,20 @@ import {
 import { api, apiFetch, fetchAllPages, mapProperty } from "@/services/api";
 
 const adminNav = [
-  ["Inicio", "/administracion", Home],
-  ["Propiedades", "/administracion/propiedades", Building2],
-  ["Desarrollos", "/administracion/desarrollos", Images],
-  ["Catálogos", "/administracion/catalogos", MapPin],
-  ["Contenido", "/administracion/contenido", FileText],
-  ["Consultas", "/administracion/consultas", MessageSquare],
-  ["Clientes", "/administracion/clientes", Users],
-  ["Visitas", "/administracion/visitas", CalendarDays],
-  ["Ventas", "/administracion/ventas", Handshake],
-  ["Marketing", "/administracion/marketing", Megaphone],
-  ["Resultados", "/administracion/bi", BarChart3],
-  ["Historial", "/administracion/auditoria", ShieldCheck],
+  ["Inicio", "/administracion", Home, []],
+  ["Propiedades", "/administracion/propiedades", Building2, ["catalog.manage_offerings"]],
+  ["Desarrolladoras", "/administracion/desarrolladoras", Building2, ["catalog.manage_developers"]],
+  ["Desarrollos", "/administracion/desarrollos", Images, ["catalog.manage_developments"]],
+  ["Modelos", "/administracion/modelos", Layers3, ["catalog.manage_models"]],
+  ["Catálogos", "/administracion/catalogos", MapPin, ["catalog.manage_catalogs"]],
+  ["Contenido", "/administracion/contenido", FileText, ["content.manage_content"]],
+  ["Consultas", "/administracion/consultas", MessageSquare, ["crm.manage_inquiries"]],
+  ["Clientes", "/administracion/clientes", Users, ["crm.manage_leads"]],
+  ["Visitas", "/administracion/visitas", CalendarDays, ["crm.manage_visits"]],
+  ["Ventas", "/administracion/ventas", Handshake, ["crm.manage_sales"]],
+  ["Marketing", "/administracion/marketing", Megaphone, ["marketing.view_campaigns", "marketing.manage_campaigns", "marketing.view_spend", "marketing.manage_spend"]],
+  ["Resultados", "/administracion/bi", BarChart3, ["analytics.view_bi"]],
+  ["Historial", "/administracion/auditoria", ShieldCheck, ["audit.view_audit"]],
 ] as const;
 export function AdminHeader({ title }: { title: string }) {
   return (
@@ -79,15 +83,17 @@ export function AdminSidebar() {
   const path = usePathname();
   const router = useRouter();
   const { logout } = useCasaViva();
-  const [canManageUsers, setCanManageUsers] = useState(false);
-  useEffect(() => { apiFetch<{ can_manage_users: boolean }>("/api/v1/auth/me/").then((x) => setCanManageUsers(x.can_manage_users)).catch(() => setCanManageUsers(false)); }, []);
+  const [session, setSession] = useState<{ can_manage_users?: boolean; effective_permissions?: string[]; role?: string; casaviva_mode?: string }>({});
+  useEffect(() => { apiFetch<typeof session>("/api/v1/auth/me/").then(setSession).catch(() => setSession({})); }, []);
+  const permissions = new Set(session.effective_permissions || []);
+  const owner = session.role === "Owner";
   return (
     <aside className="admin-sidebar">
       <Link href="/administracion">
         <CasaVivaLogo variant="light" />
       </Link>
       <nav className="admin-nav">
-        {adminNav.map(([label, href, Icon]) => (
+        {adminNav.filter(([, , , required]) => owner || required.length === 0 || required.some((key) => permissions.has(key))).map(([label, href, Icon]) => (
           <Link
             key={href}
             href={href}
@@ -102,8 +108,9 @@ export function AdminSidebar() {
           </Link>
         ))}
       </nav>
-      {canManageUsers && <nav className="admin-nav"><Link href="/administracion/usuarios" className={path.startsWith("/administracion/usuarios") ? "active" : ""}><Users size={16} /> Usuarios</Link></nav>}
+      {session.can_manage_users && <div className="admin-security"><span>Seguridad</span><nav className="admin-nav"><Link href="/administracion/usuarios" className={path.startsWith("/administracion/usuarios") ? "active" : ""}><Users size={16} /> Usuarios</Link><Link href="/administracion/roles" className={path.startsWith("/administracion/roles") ? "active" : ""}><KeyRound size={16} /> Roles</Link></nav></div>}
       <div className="admin-nav-bottom">
+        {session.casaviva_mode === "demo" && <div className="admin-demo">MODO DEMOSTRACIÓN · DATOS SIMULADOS</div>}
         <Link href="/" target="_blank">
           <ExternalLink size={16} /> Ver sitio
         </Link>
@@ -146,6 +153,15 @@ export function AdminLayout({
       <main className="admin-main">{children}</main>
     </div>
   );
+}
+
+type AdminMedia = { mediaId: string; role: "HERO" | "GALLERY" | "FLOORPLAN" | "DOCUMENT"; sortOrder: number; url?: string };
+function MediaManager({ title, assets, onChange }: { title: string; assets: AdminMedia[]; onChange: (assets: AdminMedia[]) => void }) {
+  const [role, setRole] = useState<AdminMedia["role"]>("GALLERY"); const [uploading, setUploading] = useState(false); const { toast } = useToast();
+  const ordered = [...assets].sort((a,b) => a.sortOrder - b.sortOrder);
+  const upload = async (file?: File) => { if (!file) return; setUploading(true); try { const form = new FormData(); form.append("file", file); form.append("media_type", role === "DOCUMENT" ? "DOCUMENT" : role === "FLOORPLAN" ? "FLOORPLAN" : "IMAGE"); form.append("alt_text", title); const asset = await apiFetch<{ id: string; url: string }>("/api/v1/admin/media/", { method: "POST", body: form }); const next = role === "HERO" ? assets.filter((x) => x.role !== "HERO") : assets; onChange([...next, { mediaId: asset.id, role, sortOrder: next.length, url: asset.url }]); } catch (error) { toast(error instanceof Error ? error.message : "No fue posible cargar el archivo"); } finally { setUploading(false); } };
+  const mutate = (id: string, changes?: Partial<AdminMedia>, direction=0) => { let next = ordered.map((asset) => asset.mediaId === id ? { ...asset, ...changes } : asset); if (changes?.role === "HERO") next = next.filter((asset) => asset.mediaId === id || asset.role !== "HERO"); if (direction) { const index = next.findIndex((asset) => asset.mediaId === id); const target = index + direction; if (target >= 0 && target < next.length) [next[index], next[target]] = [next[target], next[index]]; } onChange(next.map((asset, index) => ({ ...asset, sortOrder: index }))); };
+  return <div className="media-manager"><div className="admin-toolbar"><select value={role} onChange={(e) => setRole(e.target.value as AdminMedia["role"])}><option value="HERO">Principal</option><option value="GALLERY">Galería</option><option value="FLOORPLAN">Plano</option><option value="DOCUMENT">Documento</option></select><label className="button secondary media-upload">{uploading ? "Cargando…" : "Añadir archivo"}<input type="file" accept={role === "DOCUMENT" ? "application/pdf" : "image/jpeg,image/png,image/webp,application/pdf"} disabled={uploading} onChange={(e) => void upload(e.target.files?.[0])} /></label></div>{ordered.map((asset, index) => <div className="media-row" key={asset.mediaId}>{asset.url && asset.role !== "DOCUMENT" ? <Image src={asset.url} alt="" width={72} height={48} /> : <FileText size={24} />}<select value={asset.role} onChange={(e) => mutate(asset.mediaId, { role: e.target.value as AdminMedia["role"] })}><option value="HERO">Principal</option><option value="GALLERY">Galería</option><option value="FLOORPLAN">Plano</option><option value="DOCUMENT">Documento</option></select><button type="button" disabled={index === 0} onClick={() => mutate(asset.mediaId, undefined, -1)}>↑</button><button type="button" disabled={index === ordered.length - 1} onClick={() => mutate(asset.mediaId, undefined, 1)}>↓</button><button type="button" onClick={() => onChange(assets.filter((x) => x.mediaId !== asset.mediaId))}>Quitar vínculo</button></div>)}</div>;
 }
 
 const loginSchema = z.object({ email: z.email(), password: z.string().min(1) });
@@ -484,7 +500,7 @@ export function PropertyFormPage({ id }: { id?: string }) {
   );
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [history, setHistory] = useState<{ prices: any[]; availability: any[] }>({ prices: [], availability: [] });
   const [modelLinks, setModelLinks] = useState<Array<{ id: string; development: string; development_name: string; housing_model: string; model_name: string; developer_id: string; developer_name: string }>>([]);
   const [amenityOptions, setAmenityOptions] = useState<Array<{ id: string; name: string; category: string }>>([]);
   const [propertyTypeOptions, setPropertyTypeOptions] = useState<PropertyTypeOption[]>([]);
@@ -508,6 +524,7 @@ export function PropertyFormPage({ id }: { id?: string }) {
     return () => { cancelled = true; };
   }, [effectiveMunicipalityId]);
   useEffect(() => { fetchAllPages<{ id: string; label: string; data_type: string; unit?: string; choices?: Array<{ id: string; label: string }> }>("/api/v1/admin/features/?page_size=100&is_active=true").then(setFeatureOptions).catch(() => setFeatureOptions([])); }, []);
+  useEffect(() => { if (!id) return; Promise.all([apiFetch<any[]>(`/api/v1/admin/properties/${id}/price_history/`), apiFetch<any[]>(`/api/v1/admin/properties/${id}/availability_history/`)]).then(([prices, availability]) => setHistory({ prices, availability })).catch(() => undefined); }, [id]);
   const { toast } = useToast();
   const update = <K extends keyof Property>(key: K, value: Property[K]) =>
     setItem((p) => ({ ...p, [key]: value }));
@@ -724,20 +741,9 @@ export function PropertyFormPage({ id }: { id?: string }) {
         <div className="admin-form-grid">{featureOptions.map((feature) => { const current = item.featureValues?.find((value) => value.definition === feature.id); const setFeature = (changes: Record<string, unknown>) => setItem((property) => ({ ...property, featureValues: [...(property.featureValues || []).filter((value) => value.definition !== feature.id), { definition: feature.id, data_type: feature.data_type, ...changes }] })); return feature.data_type === "BOOLEAN" ? <Toggle key={feature.id} label={feature.label} checked={Boolean(current?.value_boolean)} onChange={(value) => setFeature({ value_boolean: value })} /> : feature.data_type === "NUMBER" ? <NumberField key={feature.id} label={`${feature.label}${feature.unit ? ` (${feature.unit})` : ""}`} value={current?.value_number} onChange={(value) => setFeature({ value_number: value })} /> : feature.data_type === "CHOICE" ? <Select key={feature.id} label={feature.label} value={current?.value_choice || ""} onChange={(value) => setFeature({ value_choice: value || undefined })} options={[["Selecciona", ""], ...(feature.choices || []).map((choice) => [choice.label, choice.id])]} /> : <Text key={feature.id} label={feature.label} value={current?.value_text || ""} onChange={(value) => setFeature({ value_text: value })} />; })}</div>
       </FormSection>
       <FormSection title="Multimedia">
-        <div className="admin-form-grid">
-          <label className="field"><span>Imagen principal</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploading} onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setUploading(true); try { const form = new FormData(); form.append("file", file); form.append("media_type", "IMAGE"); form.append("alt_text", item.title); const asset = await apiFetch<{ id: string; url: string }>("/api/v1/admin/media/", { method: "POST", body: form }); setItem((p) => ({ ...p, heroImage: asset.url, heroMediaId: asset.id })); toast("Imagen cargada"); } catch (error) { setErrors([error instanceof Error ? error.message : "Error al cargar imagen"]); } finally { setUploading(false); } }} /><small>{uploading ? "Cargando imagen…" : "JPG, PNG o WebP. El servidor la valida y optimiza."}</small></label>
-        </div>
-        {item.heroImage && (
-          <div className="image-preview">
-            <Image
-              src={item.heroImage}
-              alt="Vista previa"
-              width={1000}
-              height={400}
-            />
-          </div>
-        )}
+        <MediaManager title={item.title} assets={(item.mediaAssets || []) as AdminMedia[]} onChange={(assets) => setItem((current) => ({ ...current, mediaAssets: assets, heroMediaId: assets.find((asset) => asset.role === "HERO")?.mediaId, heroImage: assets.find((asset) => asset.role === "HERO")?.url || "/casaviva-placeholder.svg" }))} />
       </FormSection>
+      {existing && <FormSection title="Historial"><h3>Precio</h3><AdminTable heads={["Fecha", "Tipo", "Valor", "Usuario / origen"]}>{history.prices.map((row) => <tr key={row.id}><td>{formatDate(row.effective_from)}</td><td>{row.price_type}</td><td>{row.amount_min == null ? "A consultar" : formatCurrency(Number(row.amount_min))}</td><td>{row.created_by_name || row.source_name || "Sistema"}</td></tr>)}</AdminTable><h3>Disponibilidad</h3><AdminTable heads={["Fecha", "Estado", "Usuario"]}>{history.availability.map((row) => <tr key={row.id}><td>{formatDate(row.effective_from)}</td><td>{row.status_label}</td><td>{row.changed_by_name || "Sistema"}</td></tr>)}</AdminTable></FormSection>}
       <FormSection title="Datos internos">
         <p className="muted">Estos datos nunca se publican.</p>
         <div className="admin-form-grid">
@@ -846,7 +852,6 @@ export function DevelopmentFormPage({ id }: { id?: string }) {
   const { toast } = useToast();
   const [developers, setDevelopers] = useState<Array<{ id: string; name: string }>>([]);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [amenityOptions, setAmenityOptions] = useState<Array<{ id: string; name: string }>>([]);
   const [localityOptions, setLocalityOptions] = useState<Array<{ id: string; name: string }>>([]);
   const [neighborhoodOptions, setNeighborhoodOptions] = useState<Array<{ id: string; name: string; postal_code?: string }>>([]);
@@ -985,8 +990,7 @@ export function DevelopmentFormPage({ id }: { id?: string }) {
       </FormSection>
       <FormSection title="Amenidades y multimedia">
         <div className="filter-checks">{amenityOptions.map((amenity) => <label className="check-chip" key={amenity.id}><input type="checkbox" checked={(item.amenityIds || []).includes(amenity.id)} onChange={(event) => setItem((current) => ({ ...current, amenityIds: event.target.checked ? [...(current.amenityIds || []), amenity.id] : (current.amenityIds || []).filter((id) => id !== amenity.id), amenities: event.target.checked ? [...current.amenities.filter((name) => name !== amenity.name), amenity.name] : current.amenities.filter((name) => name !== amenity.name) }))} /><span>{amenity.name}</span></label>)}</div>
-        <label className="field"><span>Imagen principal</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploading} onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setUploading(true); try { const form = new FormData(); form.append("file", file); form.append("media_type", "IMAGE"); form.append("alt_text", item.name); const asset = await apiFetch<{ id: string; url: string }>("/api/v1/admin/media/", { method: "POST", body: form }); setItem((current) => ({ ...current, heroImage: asset.url, heroMediaId: asset.id, mediaAssets: [...(current.mediaAssets || []).filter((media) => media.role !== "HERO"), { mediaId: asset.id, role: "HERO", sortOrder: 0, url: asset.url }] })); toast("Imagen cargada"); } catch (error) { toast(error instanceof Error ? error.message : "No fue posible cargar la imagen"); } finally { setUploading(false); } }} /><small>{uploading ? "Cargando imagen…" : "JPG, PNG o WebP"}</small></label>
-        {item.heroImage && <div className="image-preview"><Image src={item.heroImage} alt="Vista previa" width={1000} height={400} /></div>}
+        <MediaManager title={item.name} assets={(item.mediaAssets || []) as AdminMedia[]} onChange={(assets) => setItem((current) => ({ ...current, mediaAssets: assets, heroMediaId: assets.find((asset) => asset.role === "HERO")?.mediaId, heroImage: assets.find((asset) => asset.role === "HERO")?.url || "/casaviva-placeholder.svg" }))} />
       </FormSection>
       <FormSection title="Modelos asociados">
         <p className="muted">Las relaciones con modelos se administran desde la sección Modelos para conservar sus ofertas y precios independientes.</p>

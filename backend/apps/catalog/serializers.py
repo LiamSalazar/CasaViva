@@ -159,13 +159,48 @@ class AmenitySerializer(serializers.ModelSerializer):
 
 class FeatureDefinitionSerializer(serializers.ModelSerializer):
     choices = serializers.SerializerMethodField()
+    choices_input = serializers.ListField(child=serializers.DictField(), write_only=True, required=False)
 
     class Meta:
         model = FeatureDefinition
         fields = "__all__"
 
     def get_choices(self, obj):
-        return [{"id": str(choice.id), "label": choice.label} for choice in obj.choices.order_by("sort_order")]
+        return [{"id": str(choice.id), "value": choice.value, "label": choice.label, "sort_order": choice.sort_order} for choice in obj.choices.order_by("sort_order")]
+
+    def validate(self, attrs):
+        data_type = attrs.get("data_type", getattr(self.instance, "data_type", None))
+        choices = attrs.get("choices_input")
+        if data_type == FeatureDefinition.DataType.CHOICE and choices is not None and not choices:
+            raise serializers.ValidationError({"choices_input": "Añade al menos una opción."})
+        return attrs
+
+    def _sync_choices(self, obj, choices):
+        if choices is None:
+            return
+        values = []
+        for index, item in enumerate(choices):
+            label = str(item.get("label", "")).strip()
+            value = str(item.get("value") or label.lower().replace(" ", "-")).strip()
+            if not label or not value:
+                raise serializers.ValidationError({"choices_input": "Cada opción requiere etiqueta y valor."})
+            values.append(FeatureChoice(definition=obj, value=value, label=label, sort_order=item.get("sort_order", index)))
+        obj.choices.all().delete()
+        FeatureChoice.objects.bulk_create(values)
+
+    @transaction.atomic
+    def create(self, validated_data):
+        choices = validated_data.pop("choices_input", None)
+        obj = super().create(validated_data)
+        self._sync_choices(obj, choices)
+        return obj
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        choices = validated_data.pop("choices_input", None)
+        obj = super().update(instance, validated_data)
+        self._sync_choices(obj, choices)
+        return obj
 
 
 class OfferingSerializer(serializers.ModelSerializer):

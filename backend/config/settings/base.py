@@ -108,6 +108,10 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+CASAVIVA_MODE = os.environ.get("CASAVIVA_MODE", "normal").lower()
+PUBLIC_SITE_URL = os.environ.get("PUBLIC_SITE_URL", "http://localhost:3000")
+if CASAVIVA_MODE == "demo":
+    MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", BASE_DIR / "media_demo"))
 if STORAGE_BACKEND == "s3":
     STORAGES = {
         "default": {"BACKEND": "storages.backends.s3.S3Storage"},

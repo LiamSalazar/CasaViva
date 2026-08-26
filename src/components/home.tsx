@@ -270,12 +270,7 @@ function HeroSearch({ locations }: { locations: string[] }) {
         router.push(`/propiedades?${q}`);
       }}
     >
-      <label>
-        Operación
-        <select aria-label="Operación" defaultValue="sale">
-          <option value="sale">En venta</option>
-        </select>
-      </label>
+      <div className="single-option" aria-label="Operación"><span>Operación</span><strong>En venta</strong></div>
       <label>
         Precio
         <select

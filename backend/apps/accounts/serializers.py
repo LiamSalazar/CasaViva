@@ -1,7 +1,7 @@
 from django.contrib.auth import authenticate
 from django_otp.plugins.otp_totp.models import TOTPDevice
 from rest_framework import serializers
-from .models import PermissionOverride, User
+from .models import PermissionOverride, RoleProfile, User
 from django.contrib.auth.models import Group
 from django.contrib.auth.password_validation import validate_password
 
@@ -9,6 +9,7 @@ from django.contrib.auth.password_validation import validate_password
 class UserSerializer(serializers.ModelSerializer):
     name = serializers.CharField(source="full_name", read_only=True)
     role = serializers.SerializerMethodField()
+    role_display = serializers.SerializerMethodField()
     mfa_enabled = serializers.SerializerMethodField()
     can_manage_users = serializers.SerializerMethodField()
     effective_permissions = serializers.SerializerMethodField()
@@ -19,11 +20,15 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "email", "first_name", "last_name", "name", "role", "role_name", "password", "is_active", "last_login", "mfa_enabled", "can_manage_users", "authz_version", "effective_permissions", "direct_permissions", "permission_details"]
+        fields = ["id", "email", "first_name", "last_name", "name", "role", "role_display", "role_name", "password", "is_active", "last_login", "mfa_enabled", "can_manage_users", "authz_version", "effective_permissions", "direct_permissions", "permission_details"]
         read_only_fields = ["id", "last_login", "authz_version"]
 
     def get_role(self, obj):
         return "Owner" if obj.is_superuser else (obj.groups.first().name if obj.groups.exists() else "Sin rol")
+
+    def get_role_display(self, obj):
+        role = self.get_role(obj)
+        return "Administrador general" if role == "Founder Admin" else role
 
     def get_mfa_enabled(self, obj):
         return TOTPDevice.objects.filter(user=obj, confirmed=True).exists()
@@ -112,6 +117,60 @@ class AdminUserUpdateSerializer(serializers.Serializer):
 
 class UserPermissionsSerializer(serializers.Serializer):
     permissions = serializers.ListField(child=serializers.CharField(max_length=160), allow_empty=True, max_length=200)
+
+
+class RoleSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source="group.name", max_length=150)
+    permissions = serializers.ListField(child=serializers.CharField(max_length=160), write_only=True, required=False)
+    permission_keys = serializers.SerializerMethodField()
+    user_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = RoleProfile
+        fields = ["id", "name", "description", "is_system", "is_owner", "permissions", "permission_keys", "user_count"]
+        read_only_fields = ["is_system", "is_owner", "user_count"]
+
+    def get_permission_keys(self, obj):
+        return sorted(f"{p.content_type.app_label}.{p.codename}" for p in obj.group.permissions.select_related("content_type"))
+
+    def validate_name(self, value):
+        value = value.strip()
+        if value.lower() == "owner":
+            raise serializers.ValidationError("Owner es un rol reservado.")
+        query = Group.objects.filter(name__iexact=value)
+        if self.instance:
+            query = query.exclude(pk=self.instance.group_id)
+        if query.exists():
+            raise serializers.ValidationError("Ya existe un rol con este nombre.")
+        return value
+
+    def validate_permissions(self, keys):
+        available = {f"{p.content_type.app_label}.{p.codename}" for p in __import__("apps.accounts.services", fromlist=["managed_permissions_queryset"]).managed_permissions_queryset()}
+        if set(keys) - available:
+            raise serializers.ValidationError("Uno o más permisos no son administrables.")
+        return keys
+
+    def _set_permissions(self, group, keys):
+        available = __import__("apps.accounts.services", fromlist=["managed_permissions_queryset"]).managed_permissions_queryset()
+        group.permissions.set([p for p in available if f"{p.content_type.app_label}.{p.codename}" in set(keys)])
+
+    def create(self, validated_data):
+        group_data = validated_data.pop("group")
+        keys = validated_data.pop("permissions", [])
+        group = Group.objects.create(name=group_data["name"])
+        profile = RoleProfile.objects.create(group=group, **validated_data)
+        self._set_permissions(group, keys)
+        return profile
+
+    def update(self, instance, validated_data):
+        group_data = validated_data.pop("group", None)
+        keys = validated_data.pop("permissions", None)
+        if group_data:
+            instance.group.name = group_data["name"]
+            instance.group.save(update_fields=["name"])
+        if keys is not None:
+            self._set_permissions(instance.group, keys)
+        return super().update(instance, validated_data)
 
 
 class LoginSerializer(serializers.Serializer):

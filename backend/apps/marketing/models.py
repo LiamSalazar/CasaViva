@@ -5,9 +5,20 @@ from apps.common.models import BusinessModel, UUIDTimeStampedModel
 
 
 class MarketingCampaign(BusinessModel):
+    class Channel(models.TextChoices):
+        INSTAGRAM = "INSTAGRAM", "Instagram"
+        FACEBOOK = "FACEBOOK", "Facebook"
+        TIKTOK = "TIKTOK", "TikTok"
+        GOOGLE = "GOOGLE", "Google"
+        OTHER = "OTHER", "Otro"
+
     name = models.CharField(max_length=180)
     utm_campaign = models.CharField(max_length=160, unique=True)
-    channel = models.CharField(max_length=80)
+    channel = models.CharField(max_length=20, choices=Channel.choices)
+    planned_budget = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    utm_source = models.CharField(max_length=120)
+    utm_medium = models.CharField(max_length=120)
+    default_landing_path = models.CharField(max_length=500, default="/")
     start_date = models.DateField()
     end_date = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)

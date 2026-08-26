@@ -4,7 +4,7 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from apps.audit.services import audit_event
-from .models import PermissionOverride
+from .models import PermissionOverride, RoleProfile
 
 
 BUSINESS_PERMISSIONS = [
@@ -19,15 +19,56 @@ BUSINESS_PERMISSIONS = [
 ]
 SECURITY_PERMISSIONS = ["accounts.manage_users", "accounts.manage_roles", "accounts.manage_permissions"]
 
+DEFAULT_ROLES = {
+    "Founder Admin": {
+        "description": "Acceso general a la operación de CasaViva.",
+        "permissions": BUSINESS_PERMISSIONS,
+    },
+    "Operaciones e inventario": {
+        "description": "Propiedades, desarrolladoras, desarrollos, modelos y catálogos.",
+        "permissions": [key for key in BUSINESS_PERMISSIONS if key.startswith("catalog.") or key.startswith("listings.")],
+    },
+    "Comercial": {
+        "description": "Clientes, consultas, visitas y ventas.",
+        "permissions": [key for key in BUSINESS_PERMISSIONS if key.startswith("crm.")],
+    },
+    "Marketing y BI": {
+        "description": "Campañas, gasto publicitario y resultados.",
+        "permissions": [key for key in BUSINESS_PERMISSIONS if key.startswith("marketing.") or key == "analytics.view_bi"],
+    },
+    "Contenido": {
+        "description": "Contenido editorial, guías y ubicaciones públicas.",
+        "permissions": ["content.manage_content"],
+    },
+}
+
 
 @transaction.atomic
 def seed_groups():
     owner, _ = Group.objects.get_or_create(name="Owner")
-    founder, _ = Group.objects.get_or_create(name="Founder Admin")
     by_key = {f"{p.content_type.app_label}.{p.codename}": p for p in Permission.objects.select_related("content_type")}
-    founder.permissions.set([by_key[key] for key in BUSINESS_PERMISSIONS if key in by_key])
     owner.permissions.set([by_key[key] for key in BUSINESS_PERMISSIONS + SECURITY_PERMISSIONS if key in by_key])
-    return owner, founder
+    RoleProfile.objects.update_or_create(group=owner, defaults={"description": "Propietario reservado de CasaViva.", "is_system": True, "is_owner": True})
+    roles = {}
+    for name, config in DEFAULT_ROLES.items():
+        group, _ = Group.objects.get_or_create(name=name)
+        group.permissions.set([by_key[key] for key in config["permissions"] if key in by_key])
+        RoleProfile.objects.update_or_create(group=group, defaults={"description": config["description"], "is_system": True, "is_owner": False})
+        roles[name] = group
+    return owner, roles["Founder Admin"]
+
+
+def reset_permission_overrides(actor, user, request=None):
+    if not actor.is_superuser or not actor.has_perm("accounts.manage_permissions"):
+        raise PermissionDenied("Sólo el Owner puede modificar accesos.")
+    if user.is_superuser:
+        raise ValidationError("Los permisos del Owner no pueden limitarse.")
+    PermissionOverride.objects.filter(user=user).delete()
+    user.authz_version += 1
+    user.save(update_fields=["authz_version", "updated_at"])
+    revoke_user_sessions(user)
+    audit_event(actor, "PERMISSION_RESET", user, request=request)
+    return user
 
 
 def revoke_user_sessions(user, except_session=None):

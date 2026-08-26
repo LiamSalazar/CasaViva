@@ -1,4 +1,6 @@
+from django.conf import settings
 from django.db import transaction
+from django.db.models import Sum
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -8,11 +10,35 @@ from apps.accounts.permissions import IsMfaVerifiedAdmin
 from apps.accounts.security import has_recent_mfa
 from apps.audit.services import audit_event
 from .models import MarketingCampaign, MarketingSpend
+from apps.analytics.models import WebSession
+from apps.crm.models import Inquiry, Sale, Visit
 
 class CampaignSerializer(serializers.ModelSerializer):
+    channel_label = serializers.CharField(source="get_channel_display", read_only=True)
+    actual_spend = serializers.SerializerMethodField()
+    available_budget = serializers.SerializerMethodField()
+    execution_percent = serializers.SerializerMethodField()
+
     class Meta:
         model = MarketingCampaign
         exclude = ["created_by", "updated_by", "archived_by"]
+
+    def get_actual_spend(self, obj):
+        return obj.spend.filter(is_voided=False).aggregate(total=Sum("amount"))["total"] or 0
+
+    def get_available_budget(self, obj):
+        return obj.planned_budget - self.get_actual_spend(obj)
+
+    def get_execution_percent(self, obj):
+        return round(self.get_actual_spend(obj) / obj.planned_budget * 100, 2) if obj.planned_budget else None
+
+    def validate(self, attrs):
+        if attrs.get("planned_budget", getattr(self.instance, "planned_budget", 0)) < 0:
+            raise serializers.ValidationError({"planned_budget": "El presupuesto no puede ser negativo."})
+        path = attrs.get("default_landing_path", getattr(self.instance, "default_landing_path", "/"))
+        if not path.startswith("/") or path.startswith("//"):
+            raise serializers.ValidationError({"default_landing_path": "Usa una ruta pública que comience con /."})
+        return attrs
 
 class SpendSerializer(serializers.ModelSerializer):
     campaign_name = serializers.CharField(source="campaign.name", read_only=True)
@@ -98,6 +124,33 @@ class CampaignViewSet(MarketingViewSet):
         campaign.save(update_fields=["archived_at", "archived_by", "is_active", "updated_by", "version", "updated_at"])
         audit_event(request.user, "RESTORE", campaign, request=request)
         return Response(self.get_serializer(campaign).data)
+
+    @action(detail=True, methods=["get"])
+    def results(self, request, pk=None):
+        campaign = self.get_object()
+        sessions = WebSession.objects.filter(utm_campaign=campaign.utm_campaign)
+        lead_ids = list(sessions.exclude(lead__isnull=True).values_list("lead_id", flat=True).distinct())
+        inquiries = Inquiry.objects.filter(lead_id__in=lead_ids).count()
+        visits = Visit.objects.filter(lead_id__in=lead_ids, status=Visit.Status.COMPLETED).count()
+        sales = Sale.objects.filter(lead_id__in=lead_ids, status=Sale.Status.CLOSED)
+        totals = sales.aggregate(value=Sum("sale_price"), commission=Sum("commission_amount"))
+        spend = campaign.spend.filter(is_voided=False).aggregate(total=Sum("amount"))["total"] or 0
+        commission = totals["commission"] or 0
+        count = sales.count()
+        ratio = lambda denominator: spend / denominator if spend and denominator else None
+        return Response({
+            "planned_budget": campaign.planned_budget, "spend": spend,
+            "available_budget": campaign.planned_budget - spend,
+            "execution_percent": round(spend / campaign.planned_budget * 100, 2) if campaign.planned_budget else None,
+            "sessions": sessions.count(), "acquired_clients": len(lead_ids), "inquiries": inquiries,
+            "completed_visits": visits, "closed_sales": count,
+            "attributed_sales_value": totals["value"] or 0, "attributed_commission": commission,
+            "cost_per_client": ratio(len(lead_ids)), "cost_per_inquiry": ratio(inquiries),
+            "cost_per_visit": ratio(visits), "cost_per_sale": ratio(count),
+            "contribution_after_advertising": commission - spend,
+            "return_on_ad_spend": commission / spend if spend else None,
+            "public_site_url": settings.PUBLIC_SITE_URL.rstrip("/"),
+        })
 
 class SpendViewSet(MarketingViewSet):
     view_permission = "marketing.view_spend"

@@ -76,6 +76,21 @@ class LeadViewSet(viewsets.ModelViewSet):
         rows = [[x.first_name, x.last_name or "", x.email or "", x.phone_raw or "", x.get_status_display(), x.created_at.isoformat()] for x in self.filter_queryset(self.get_queryset())]
         return csv_response("clientes.csv", ["Nombre", "Apellidos", "Correo", "Teléfono", "Estado", "Creado"], rows)
 
+    @action(detail=True, methods=["get"])
+    def timeline(self, request, pk=None):
+        lead = self.get_object()
+        events = [{"kind": "LEAD_CREATED", "label": "Cliente creado", "at": lead.created_at}]
+        events += [{"kind": "STAGE", "label": f"Etapa: {item.get_stage_display()}", "at": item.started_at} for item in lead.stage_history.all()]
+        events += [{"kind": "INQUIRY", "label": "Consulta", "detail": item.get_intent_display(), "at": item.created_at} for item in lead.inquiries.all()]
+        events += [{"kind": "VISIT", "label": f"Visita {item.get_status_display().lower()}", "detail": str(item.offering), "at": item.completed_at or item.scheduled_at} for item in lead.visits.select_related("offering")]
+        events += [{"kind": "SALE", "label": f"Venta {item.get_status_display().lower()}", "detail": str(item.sale_price), "at": item.closed_at} for item in lead.sales.all()]
+        first = lead.web_sessions.order_by("started_at").first()
+        return Response({
+            "attribution": {"campaign": first.utm_campaign, "source": first.utm_source, "medium": first.utm_medium} if first else {"campaign": None, "source": lead.first_source, "medium": None},
+            "interests": [{"type": item.get_interest_type_display(), "property": str(item.offering)} for item in lead.interests.select_related("offering")],
+            "events": sorted(events, key=lambda item: item["at"]),
+        })
+
 class CommercialHistoryViewSet(
     mixins.CreateModelMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin, viewsets.GenericViewSet,

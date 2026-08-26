@@ -8,6 +8,21 @@ from django.utils import timezone
 from apps.common.models import UUIDTimeStampedModel
 
 
+class RoleProfile(UUIDTimeStampedModel):
+    """Business metadata layered on Django Group without replacing its auth model."""
+
+    group = models.OneToOneField("auth.Group", on_delete=models.CASCADE, related_name="casaviva_profile")
+    description = models.CharField(max_length=240, blank=True)
+    is_system = models.BooleanField(default=False)
+    is_owner = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["group__name"]
+
+    def __str__(self):
+        return self.group.name
+
+
 class UserManager(BaseUserManager):
     use_in_migrations = True
 

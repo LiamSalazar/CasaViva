@@ -132,6 +132,7 @@ admin_router.register("site-settings", SiteSettingsViewSet)
 admin_router.register("location-content", LocationContentViewSet)
 admin_router.register("audit", AuditViewSet)
 admin_router.register("users", account_views.UserViewSet)
+admin_router.register("roles", account_views.RoleViewSet, basename="role")
 admin_router.register("marketing-campaigns", CampaignViewSet)
 admin_router.register("marketing-spend", SpendViewSet)
 
