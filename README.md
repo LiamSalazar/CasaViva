@@ -120,7 +120,7 @@ El script crea exclusivamente `casaviva_test` en el Compose de pruebas, comprueb
 
 Las credenciales de esta infraestructura son constantes de prueba aisladas. Playwright recibe usuarios `@example.test` y un secreto TOTP temporal mediante variables del propio script; no existe bypass MFA y nada se habilita en producción.
 
-`reset_demo_data` sólo funciona con `DEBUG=True`. Los seeds son idempotentes: crean faltantes y no reemplazan correcciones humanas.
+`reset_demo_data` exige simultáneamente `CASAVIVA_MODE=demo` y que el nombre de la base de datos sea exactamente `casaviva_demo`; en cualquier otro entorno aborta. Los seeds son idempotentes: crean faltantes y no reemplazan correcciones humanas.
 
 ## API y documentación
 

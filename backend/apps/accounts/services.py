@@ -1,6 +1,7 @@
 from django.contrib.auth.models import Group, Permission
 from django.contrib.sessions.models import Session
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from apps.audit.services import audit_event
@@ -45,15 +46,17 @@ DEFAULT_ROLES = {
 
 @transaction.atomic
 def seed_groups():
-    owner, _ = Group.objects.get_or_create(name="Owner")
+    owner, owner_created = Group.objects.get_or_create(name="Owner")
     by_key = {f"{p.content_type.app_label}.{p.codename}": p for p in Permission.objects.select_related("content_type")}
-    owner.permissions.set([by_key[key] for key in BUSINESS_PERMISSIONS + SECURITY_PERMISSIONS if key in by_key])
-    RoleProfile.objects.update_or_create(group=owner, defaults={"description": "Propietario reservado de CasaViva.", "is_system": True, "is_owner": True})
+    if owner_created:
+        owner.permissions.set([by_key[key] for key in BUSINESS_PERMISSIONS + SECURITY_PERMISSIONS if key in by_key])
+    RoleProfile.objects.get_or_create(group=owner, defaults={"description": "Propietario reservado de CasaViva.", "is_system": True, "is_owner": True})
     roles = {}
     for name, config in DEFAULT_ROLES.items():
-        group, _ = Group.objects.get_or_create(name=name)
-        group.permissions.set([by_key[key] for key in config["permissions"] if key in by_key])
-        RoleProfile.objects.update_or_create(group=group, defaults={"description": config["description"], "is_system": True, "is_owner": False})
+        group, created = Group.objects.get_or_create(name=name)
+        if created:
+            group.permissions.set([by_key[key] for key in config["permissions"] if key in by_key])
+        RoleProfile.objects.get_or_create(group=group, defaults={"description": config["description"], "is_system": True, "is_owner": False})
         roles[name] = group
     return owner, roles["Founder Admin"]
 
@@ -79,11 +82,11 @@ def revoke_user_sessions(user, except_session=None):
 
 
 def managed_permissions_queryset():
-    return Permission.objects.select_related("content_type").filter(
-        content_type__app_label__in=[
-            "catalog", "listings", "crm", "content", "analytics", "audit", "marketing",
-        ]
-    )
+    functional_filter = Q()
+    for key in BUSINESS_PERMISSIONS:
+        app_label, codename = key.split(".", 1)
+        functional_filter |= Q(content_type__app_label=app_label, codename=codename)
+    return Permission.objects.select_related("content_type").filter(functional_filter)
 
 
 @transaction.atomic

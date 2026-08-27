@@ -6,12 +6,14 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 from django.utils import timezone
+from datetime import timedelta
 from apps.accounts.permissions import IsMfaVerifiedAdmin
 from apps.accounts.security import has_recent_mfa
 from apps.audit.services import audit_event
 from .models import MarketingCampaign, MarketingSpend
 from apps.analytics.models import WebSession
-from apps.crm.models import Inquiry, Sale, Visit
+from apps.analytics.attribution import with_first_touch
+from apps.crm.models import Inquiry, Lead, Sale, Visit
 
 class CampaignSerializer(serializers.ModelSerializer):
     channel_label = serializers.CharField(source="get_channel_display", read_only=True)
@@ -129,14 +131,34 @@ class CampaignViewSet(MarketingViewSet):
     def results(self, request, pk=None):
         campaign = self.get_object()
         sessions = WebSession.objects.filter(utm_campaign=campaign.utm_campaign)
-        lead_ids = list(sessions.exclude(lead__isnull=True).values_list("lead_id", flat=True).distinct())
-        inquiries = Inquiry.objects.filter(lead_id__in=lead_ids).count()
-        visits = Visit.objects.filter(lead_id__in=lead_ids, status=Visit.Status.COMPLETED).count()
+        # BI's canonical first-touch cohort is the authority for attributed outcomes.
+        attributed = list(with_first_touch(Lead.objects.all()).filter(
+            acquired_campaign=campaign.utm_campaign,
+        ).values("id", "acquired_at"))
+        acquisition = {row["id"]: row["acquired_at"] for row in attributed}
+        lead_ids = list(acquisition)
+        def within(lead_id, occurred_at):
+            acquired_at = acquisition[lead_id]
+            return bool(occurred_at and occurred_at >= acquired_at and occurred_at < acquired_at + timedelta(days=90))
+        inquiries = sum(
+            within(lead_id, created_at)
+            for lead_id, created_at in Inquiry.objects.filter(lead_id__in=lead_ids).values_list("lead_id", "created_at")
+        )
+        visits = sum(
+            within(lead_id, completed_at)
+            for lead_id, completed_at in Visit.objects.filter(
+                lead_id__in=lead_ids, status=Visit.Status.COMPLETED, completed_at__isnull=False,
+            ).values_list("lead_id", "completed_at")
+        )
         sales = Sale.objects.filter(lead_id__in=lead_ids, status=Sale.Status.CLOSED)
-        totals = sales.aggregate(value=Sum("sale_price"), commission=Sum("commission_amount"))
+        attributed_sales = [sale for sale in sales if within(sale.lead_id, sale.closed_at)]
+        totals = {
+            "value": sum((sale.sale_price for sale in attributed_sales), start=0),
+            "commission": sum((sale.commission_amount or 0 for sale in attributed_sales), start=0),
+        }
         spend = campaign.spend.filter(is_voided=False).aggregate(total=Sum("amount"))["total"] or 0
         commission = totals["commission"] or 0
-        count = sales.count()
+        count = len(attributed_sales)
         ratio = lambda denominator: spend / denominator if spend and denominator else None
         return Response({
             "planned_budget": campaign.planned_budget, "spend": spend,

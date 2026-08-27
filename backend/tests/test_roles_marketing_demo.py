@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import timedelta
 
 import pytest
 from django.contrib.auth.models import Group, Permission
@@ -9,7 +10,7 @@ from django.utils import timezone
 from django.conf import settings
 from django.db import connection
 
-from apps.accounts.models import PermissionOverride, User
+from apps.accounts.models import PermissionOverride, RoleProfile, User
 from apps.analytics.models import AnonymousVisitor, WebSession
 from apps.crm.models import Inquiry, Lead, Sale, Visit
 from apps.marketing.models import MarketingCampaign, MarketingSpend
@@ -33,6 +34,17 @@ def test_owner_creates_role_assigns_all_and_clear_and_protects_system_roles(admi
 
 
 @pytest.mark.django_db
+def test_permission_options_only_expose_casaviva_functional_permissions(admin_client):
+    call_command("seed_system")
+    options = admin_client.get("/api/v1/admin/users/permission-options/").data
+    keys = {item["key"] for item in options}
+    from apps.accounts.services import BUSINESS_PERMISSIONS
+    assert {"crm.manage_sales", "catalog.manage_offerings", "analytics.view_bi"} <= keys
+    assert keys == set(BUSINESS_PERMISSIONS)
+    assert not any(item.rsplit(".", 1)[-1].startswith(prefix) for item in keys for prefix in ("add_", "change_", "delete_"))
+
+
+@pytest.mark.django_db
 def test_role_assignment_deny_precedence_and_reset_to_role(admin_client):
     call_command("seed_system")
     user = User.objects.create_user(email="commercial@example.test", password="A-secure-test-password!", first_name="Comercial")
@@ -45,6 +57,22 @@ def test_role_assignment_deny_precedence_and_reset_to_role(admin_client):
     user.refresh_from_db()
     assert user.has_perm("crm.manage_sales")
     assert not user.permission_overrides.exists()
+
+
+@pytest.mark.django_db
+def test_seed_groups_does_not_overwrite_human_role_changes():
+    call_command("seed_system")
+    commercial = Group.objects.get(name="Comercial")
+    permission = Permission.objects.get(content_type__app_label="crm", codename="manage_sales")
+    commercial.permissions.remove(permission)
+    profile = RoleProfile.objects.get(group=commercial)
+    profile.description = "Descripción ajustada por Liam"
+    profile.save(update_fields=["description"])
+    owner, founder = __import__("apps.accounts.services", fromlist=["seed_groups"]).seed_groups()
+    commercial.refresh_from_db()
+    assert permission not in commercial.permissions.all()
+    assert RoleProfile.objects.get(group=commercial).description == "Descripción ajustada por Liam"
+    assert Group.objects.filter(name="Comercial").count() == 1
 
 
 @pytest.mark.django_db
@@ -66,6 +94,24 @@ def test_campaign_budget_spend_and_automatic_commission_metrics(admin_client, ow
     assert response.data["contribution_after_advertising"] == Decimal("40200.00")
     assert response.data["return_on_ad_spend"] == Decimal("9.375")
     assert "profit" not in response.data and "ganancia" not in response.data
+
+
+@pytest.mark.django_db
+def test_campaign_results_use_bi_first_touch_once(admin_client, owner, catalog):
+    now = timezone.now()
+    campaign_a = MarketingCampaign.objects.create(name="Campaña A", utm_campaign="campana_a", channel="INSTAGRAM", utm_source="instagram", utm_medium="paid_social", start_date=now.date(), created_by=owner, updated_by=owner)
+    campaign_b = MarketingCampaign.objects.create(name="Campaña B", utm_campaign="campana_b", channel="FACEBOOK", utm_source="facebook", utm_medium="paid_social", start_date=now.date(), created_by=owner, updated_by=owner)
+    lead = Lead.objects.create(first_name="First touch")
+    visitor = AnonymousVisitor.objects.create(first_seen_at=now - timedelta(days=2), last_seen_at=now)
+    WebSession.objects.create(visitor=visitor, lead=lead, started_at=now - timedelta(days=2), last_seen_at=now - timedelta(days=2), utm_campaign=campaign_a.utm_campaign, consent_state="granted")
+    WebSession.objects.create(visitor=visitor, lead=lead, started_at=now - timedelta(days=1), last_seen_at=now - timedelta(days=1), utm_campaign=campaign_b.utm_campaign, consent_state="granted")
+    Sale.objects.create(lead=lead, offering=catalog["offering"], listing=catalog["listing"], sale_price=900_000, commission_amount=27_000, closed_at=now, created_by=owner)
+    result_a = admin_client.get(f"/api/v1/admin/marketing-campaigns/{campaign_a.id}/results/").data
+    result_b = admin_client.get(f"/api/v1/admin/marketing-campaigns/{campaign_b.id}/results/").data
+    assert result_a["acquired_clients"] == 1
+    assert result_a["closed_sales"] == 1
+    assert result_b["acquired_clients"] == 0
+    assert result_b["closed_sales"] == 0
 
 
 @pytest.mark.django_db
