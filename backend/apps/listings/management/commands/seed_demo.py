@@ -1,6 +1,7 @@
 import io
 import os
 import uuid
+from urllib.request import Request, urlopen
 from datetime import timedelta
 from decimal import Decimal
 
@@ -28,9 +29,36 @@ from apps.media_library.services import store_upload
 
 NAMESPACE = uuid.UUID("6bc89a5c-274a-4c63-9eba-8e6525629120")
 
+DEMO_PHOTO_URLS = [
+    "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1400&q=82",  # exterior
+    "https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1400&q=82",  # sala
+    "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=1400&q=82",  # cocina
+    "https://images.unsplash.com/photo-1600607688969-a5bfcd646154?auto=format&fit=crop&w=1400&q=82",  # recámara
+    "https://images.unsplash.com/photo-1600573472550-8090b5e0745e?auto=format&fit=crop&w=1400&q=82",  # desarrollo
+    "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1400&q=82",  # amenidades
+    "https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?auto=format&fit=crop&w=1400&q=82",
+    "https://images.unsplash.com/photo-1600585154526-990dced4db0d?auto=format&fit=crop&w=1400&q=82",
+]
+
 
 def stable(name):
     return uuid.uuid5(NAMESPACE, name)
+
+
+def download_demo_photo(url):
+    try:
+        request = Request(url, headers={"User-Agent": "CasaViva demo seed/1.0"})
+        with urlopen(request, timeout=3) as response:
+            content_type = (response.headers.get("Content-Type") or "").split(";", 1)[0].lower()
+            length = int(response.headers.get("Content-Length") or 0)
+            if not content_type.startswith("image/") or length > 8 * 1024 * 1024:
+                return None
+            data = response.read(8 * 1024 * 1024 + 1)
+            if len(data) > 8 * 1024 * 1024:
+                return None
+            return data, content_type
+    except (OSError, ValueError):
+        return None
 
 
 class Command(BaseCommand):
@@ -101,21 +129,36 @@ class Command(BaseCommand):
                 listing.archived_at = timezone.now() - timedelta(days=4); listing.archived_by = users[0]; listing.save(update_fields=["archived_at", "archived_by"])
 
         assets = []
-        colors = [(224,216,204), (196,203,197), (210,198,187), (184,192,204), (218,208,190), (198,184,175)]
-        for index, color in enumerate(colors):
-            key = f"demo-asset-{index}"
+        colors = [(224,216,204), (196,203,197), (210,198,187), (184,192,204), (218,208,190), (198,184,175), (205,194,181), (190,202,205)]
+        for index, url in enumerate(DEMO_PHOTO_URLS):
+            key = f"demo-photo-{index}"
             existing = __import__("apps.media_library.models", fromlist=["MediaAsset"]).MediaAsset.objects.filter(alt_text=key).first()
             if existing: assets.append(existing); continue
-            image = Image.new("RGB", (1200, 760), color); draw = ImageDraw.Draw(image); draw.rectangle((90, 100, 1110, 660), outline=(55,55,55), width=5); draw.rectangle((160, 190, 560, 590), fill=(245,242,236)); draw.rectangle((640, 190, 1040, 590), fill=(235,232,225)); draw.line((600,100,600,660), fill=(55,55,55), width=3)
+            downloaded = download_demo_photo(url)
+            if downloaded:
+                photo_bytes, content_type = downloaded
+                extension = "jpg" if content_type in {"image/jpeg", "image/jpg"} else "png"
+                filename = f"{key}.{extension}"
+            else:
+                image = Image.new("RGB", (1200, 760), colors[index]); draw = ImageDraw.Draw(image); draw.rectangle((90, 100, 1110, 660), outline=(55,55,55), width=5); draw.rectangle((160, 190, 560, 590), fill=(245,242,236)); draw.rectangle((640, 190, 1040, 590), fill=(235,232,225)); draw.line((600,100,600,660), fill=(55,55,55), width=3)
+                output = io.BytesIO(); image.save(output, format="PNG"); photo_bytes = output.getvalue(); filename = f"{key}.png"
+            upload = SimpleUploadedFile(filename, photo_bytes, content_type=content_type if downloaded else "image/png")
+            assets.append(store_upload(upload, users[0], media_type="IMAGE", alt_text=key))
+        floorplan_key = "demo-floorplan"
+        floorplan = __import__("apps.media_library.models", fromlist=["MediaAsset"]).MediaAsset.objects.filter(alt_text=floorplan_key).first()
+        if not floorplan:
+            image = Image.new("RGB", (1200, 760), (238, 235, 226)); draw = ImageDraw.Draw(image); draw.rectangle((90, 100, 1110, 660), outline=(55,55,55), width=5); draw.line((600,100,600,660), fill=(55,55,55), width=3); draw.line((90,380,1110,380), fill=(55,55,55), width=3)
             output = io.BytesIO(); image.save(output, format="PNG")
-            upload = SimpleUploadedFile(f"{key}.png", output.getvalue(), content_type="image/png")
-            assets.append(store_upload(upload, users[0], media_type="IMAGE" if index < 4 else "FLOORPLAN", alt_text=key))
-        for index, listing in enumerate(Listing.objects.order_by("slug")[:20]):
-            ListingMedia.objects.get_or_create(listing=listing, media=assets[index % 4], defaults={"role": "HERO", "sort_order": 0})
-            ListingMedia.objects.get_or_create(listing=listing, media=assets[(index + 1) % 4], defaults={"role": "GALLERY", "sort_order": 1})
-            ListingMedia.objects.get_or_create(listing=listing, media=assets[4 + index % 2], defaults={"role": "FLOORPLAN", "sort_order": 2})
-        for index, development in enumerate(Development.objects.order_by("slug")[:10]):
-            DevelopmentMedia.objects.get_or_create(development=development, media=assets[index % 4], defaults={"role": "HERO", "sort_order": 0})
+            floorplan = store_upload(SimpleUploadedFile("demo-floorplan.png", output.getvalue(), content_type="image/png"), users[0], media_type="FLOORPLAN", alt_text=floorplan_key)
+        demo_listings = list(Listing.objects.filter(slug__startswith="propiedad-demostracion-").order_by("slug"))
+        for index, listing in enumerate(demo_listings):
+            ListingMedia.objects.get_or_create(listing=listing, media=assets[index % len(assets)], defaults={"role": "HERO", "sort_order": 0})
+            ListingMedia.objects.get_or_create(listing=listing, media=assets[(index + 1) % len(assets)], defaults={"role": "GALLERY", "sort_order": 1})
+            ListingMedia.objects.get_or_create(listing=listing, media=floorplan, defaults={"role": "FLOORPLAN", "sort_order": 2})
+        demo_developments = list(Development.objects.filter(slug__startswith="residencial-demo-").order_by("slug"))
+        for index, development in enumerate(demo_developments):
+            DevelopmentMedia.objects.get_or_create(development=development, media=assets[index % len(assets)], defaults={"role": "HERO", "sort_order": 0})
+            DevelopmentMedia.objects.get_or_create(development=development, media=assets[(index + 2) % len(assets)], defaults={"role": "GALLERY", "sort_order": 1})
 
         today = timezone.localdate()
         channels = [("INSTAGRAM","instagram","paid_social"),("FACEBOOK","facebook","paid_social"),("TIKTOK","tiktok","paid_social"),("GOOGLE","google","paid_search")]
@@ -128,7 +171,11 @@ class Command(BaseCommand):
                 MarketingSpend.objects.update_or_create(id=stable(f"spend-{index}-{part}"), defaults={"campaign": campaign, "date": today - timedelta(days=75-index*4-part*7), "amount": Decimal(900 + index*100 + part*175), "currency": "MXN"})
 
         leads = []
-        listings = list(Listing.objects.select_related("offering").order_by("slug")[:60])
+        listings = list(
+            Listing.objects.filter(slug__startswith="propiedad-demostracion-")
+            .select_related("offering")
+            .order_by("slug")
+        )
         for index in range(72):
             lead, _ = Lead.all_objects.update_or_create(id=stable(f"lead-{index}"), defaults={"first_name": f"Cliente {index+1}", "last_name": "Demostración", "email": f"cliente{index+1}@example.test", "phone_raw": f"555100{index:04d}", "phone_normalized": f"52555100{index:04d}", "status": "WON" if index < 12 else "LOST" if index < 20 else ["NEW","CONTACTED","INTERESTED","VISIT_SCHEDULED","NEGOTIATING"][index % 5], "owner_user": users[1], "first_source": channels[index % 4][1], "created_by": users[0], "updated_by": users[0]})
             age = [3, 12, 26, 48, 78][index % 5]; Lead.all_objects.filter(pk=lead.pk).update(created_at=timezone.now()-timedelta(days=age)); lead.refresh_from_db(); leads.append(lead)

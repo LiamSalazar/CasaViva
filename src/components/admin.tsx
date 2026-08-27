@@ -92,23 +92,25 @@ export function AdminSidebar() {
       <Link href="/administracion">
         <CasaVivaLogo variant="light" />
       </Link>
-      <nav className="admin-nav">
-        {adminNav.filter(([, , , required]) => owner || required.length === 0 || required.some((key) => permissions.has(key))).map(([label, href, Icon]) => (
-          <Link
-            key={href}
-            href={href}
-            className={
-              path === href || (href !== "/administracion" && path.startsWith(href))
-                ? "active"
-                : ""
-            }
-            title={label}
-          >
-            <Icon size={16} /> {label}
-          </Link>
-        ))}
-      </nav>
-      {session.can_manage_users && <div className="admin-security"><span>Seguridad</span><nav className="admin-nav"><Link href="/administracion/usuarios" className={path.startsWith("/administracion/usuarios") ? "active" : ""}><Users size={16} /> Usuarios</Link><Link href="/administracion/roles" className={path.startsWith("/administracion/roles") ? "active" : ""}><KeyRound size={16} /> Roles</Link></nav></div>}
+      <div className="admin-sidebar-scroll">
+        <nav className="admin-nav">
+          {adminNav.filter(([, , , required]) => owner || required.length === 0 || required.some((key) => permissions.has(key))).map(([label, href, Icon]) => (
+            <Link
+              key={href}
+              href={href}
+              className={
+                path === href || (href !== "/administracion" && path.startsWith(href))
+                  ? "active"
+                  : ""
+              }
+              title={label}
+            >
+              <Icon size={16} /> {label}
+            </Link>
+          ))}
+        </nav>
+        {session.can_manage_users && <div className="admin-security"><span>Seguridad</span><nav className="admin-nav"><Link href="/administracion/usuarios" className={path.startsWith("/administracion/usuarios") ? "active" : ""}><Users size={16} /> Usuarios</Link><Link href="/administracion/roles" className={path.startsWith("/administracion/roles") ? "active" : ""}><KeyRound size={16} /> Roles</Link></nav></div>}
+      </div>
       <div className="admin-nav-bottom">
         {session.casaviva_mode === "demo" && <div className="admin-demo">MODO DEMOSTRACIÓN · DATOS SIMULADOS</div>}
         <Link href="/" target="_blank">
