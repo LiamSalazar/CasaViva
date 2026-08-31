@@ -11,7 +11,7 @@ import { formatCurrency } from "@/lib/utils";
 function Bounds({ properties }: { properties: Property[] }) {
   const map = useMap();
   useEffect(() => {
-    const located = properties.filter((p) => p.latitude !== undefined && p.longitude !== undefined);
+    const located = properties.filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude));
     if (!located.length) return;
     const bounds = L.latLngBounds(
       located.map((p) => [p.latitude!, p.longitude!] as [number, number]),
@@ -29,7 +29,7 @@ export function MapView({
   selectedId?: string;
   onSelect?: (id: string) => void;
 }) {
-  const located = properties.filter((p) => p.latitude !== undefined && p.longitude !== undefined);
+  const located = properties.filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude));
   const center: [number, number] = located.length
     ? [located[0].latitude!, located[0].longitude!]
     : [19.65, -99.05];

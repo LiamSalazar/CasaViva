@@ -11,15 +11,17 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
+from django.utils.text import slugify
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
 from apps.accounts.models import PermissionOverride, User
 from apps.accounts.services import seed_groups
 from apps.analytics.models import AnalyticsEvent, AnonymousVisitor, WebSession
 from apps.audit.models import AuditEvent
-from apps.catalog.models import Development, DevelopmentMedia, Developer, FeatureChoice, FeatureDefinition, HousingModel, PropertyOffering, PropertyType
-from apps.content.models import Guide, HomeContent, HomeHeroSlide
+from apps.catalog.models import Development, DevelopmentMedia, DevelopmentModel, Developer, FeatureChoice, FeatureDefinition, HousingModel, PropertyOffering, PropertyType
+from apps.content.models import Guide, HomeContent, HomeHeroSlide, LocationContent
 from apps.crm.models import Inquiry, Lead, LeadInterest, LeadStageHistory, Sale, Visit
 from apps.geo.models import Municipality
 from apps.listings.models import AvailabilityRecord, Listing, ListingMedia, PriceRecord
@@ -104,7 +106,7 @@ class Command(BaseCommand):
             raise CommandError("Ejecuta seed_reference_catalog antes de seed_demo.")
         for index in range(5):
             Developer.all_objects.get_or_create(slug=f"demo-desarrolladora-{index+1}", defaults={"name": f"Desarrolladora Demo {index+1}", "is_active": True, "created_by": users[0], "updated_by": users[0]})
-        developers = list(Developer.objects.order_by("name")[:5])
+        developers = list(Developer.objects.filter(slug__startswith="demo-desarrolladora-").order_by("slug"))
         for index in range(10):
             developer = developers[index % len(developers)]
             development, _ = Development.all_objects.get_or_create(slug=f"residencial-demo-{index+1}", defaults={"developer": developer, "name": f"Residencial Demo {index+1}", "state": municipality.state, "municipality": municipality, "is_active": True, "is_published": index < 8, "created_by": users[0], "updated_by": users[0]})
@@ -114,10 +116,15 @@ class Command(BaseCommand):
                 municipality=municipality,
                 is_active=True,
                 is_published=index < 8,
+                is_featured=index < 8,
+                latitude=Decimal("19.420000") + Decimal(index) * Decimal("0.012000"),
+                longitude=Decimal("-99.180000") + Decimal(index) * Decimal("0.010000"),
+                short_description="Comunidad residencial demostrativa con modelos y disponibilidad consultables.",
+                description="Desarrollo simulado de CasaViva para recorrer fotografías, modelos, precios e inventario relacionado.",
                 updated_by=users[0],
             )
             model, _ = HousingModel.all_objects.get_or_create(slug=f"modelo-demo-{index+1}", defaults={"developer": developer, "name": f"Modelo Demo {index+1}", "created_by": users[0], "updated_by": users[0]})
-            __import__("apps.catalog.models", fromlist=["DevelopmentModel"]).DevelopmentModel.all_objects.get_or_create(development=development, housing_model=model, defaults={"created_by": users[0], "updated_by": users[0]})
+            DevelopmentModel.all_objects.get_or_create(development=development, housing_model=model, defaults={"created_by": users[0], "updated_by": users[0]})
 
         feature_specs = [("demo-bool", "Paneles solares", "BOOLEAN"), ("demo-number", "Altura libre", "NUMBER"), ("demo-text", "Acabado especial", "TEXT"), ("demo-choice", "Orientación", "CHOICE")]
         for code, label, kind in feature_specs:
@@ -140,10 +147,39 @@ class Command(BaseCommand):
             if index % 13 == 0:
                 listing.archived_at = timezone.now() - timedelta(days=4); listing.archived_by = users[0]; listing.save(update_fields=["archived_at", "archived_by"])
 
+        for index, development in enumerate(Development.objects.filter(slug__startswith="residencial-demo-", is_published=True).order_by("slug")):
+            model_link = DevelopmentModel.objects.get(development=development)
+            offering, _ = PropertyOffering.all_objects.update_or_create(
+                internal_reference=f"DEMO-DEV-{index + 1:02d}",
+                defaults={
+                    "source_type": "DEVELOPER", "condition": "NEW", "development_model": model_link,
+                    "property_type": property_type, "state": None, "municipality": None,
+                    "latitude": development.latitude, "longitude": development.longitude,
+                    "bedrooms_min": 2 + index % 3, "bathrooms_total": 2,
+                    "construction_area_min": Decimal(72 + index * 4), "is_active": True,
+                    "created_by": users[0], "updated_by": users[0],
+                },
+            )
+            Listing.all_objects.update_or_create(
+                slug=f"casa-residencial-demo-{index + 1}",
+                defaults={
+                    "offering": offering, "title": f"Casa Modelo Demo {index + 1}",
+                    "short_description": f"Modelo disponible en {development.name}.",
+                    "description": "Vivienda demostrativa vinculada al desarrollo, con precio y disponibilidad vigentes.",
+                    "is_published": True, "is_featured": index < 5, "published_at": timezone.now(),
+                    "archived_at": None, "archived_by": None, "created_by": users[0], "updated_by": users[0],
+                },
+            )
+            PriceRecord.objects.update_or_create(
+                offering=offering, effective_to__isnull=True,
+                defaults={"price_type": "FROM", "amount_min": Decimal(1250000 + index * 85000), "currency": "MXN", "effective_from": timezone.now() - timedelta(days=30), "created_by": users[0]},
+            )
+            AvailabilityRecord.objects.update_or_create(
+                offering=offering, effective_to__isnull=True,
+                defaults={"status": "AVAILABLE", "effective_from": timezone.now() - timedelta(days=30), "changed_by": users[0]},
+            )
+
         media_model = __import__("apps.media_library.models", fromlist=["MediaAsset"]).MediaAsset
-        # Retira assets fotográficos de seeds demo anteriores que eran geométricos.
-        media_model.objects.filter(alt_text__startswith="demo-asset-").delete()
-        media_model.objects.filter(alt_text__startswith="demo-photo-").delete()
         assets = []
         for index, url in enumerate(DEMO_PHOTO_URLS):
             key = f"demo-real-photo-{index}"
@@ -164,7 +200,7 @@ class Command(BaseCommand):
             image = Image.new("RGB", (1200, 760), (238, 235, 226)); draw = ImageDraw.Draw(image); draw.rectangle((90, 100, 1110, 660), outline=(55,55,55), width=5); draw.line((600,100,600,660), fill=(55,55,55), width=3); draw.line((90,380,1110,380), fill=(55,55,55), width=3)
             output = io.BytesIO(); image.save(output, format="PNG")
             floorplan = store_upload(SimpleUploadedFile("demo-floorplan.png", output.getvalue(), content_type="image/png"), users[0], media_type="FLOORPLAN", alt_text=floorplan_key)
-        demo_listings = list(Listing.objects.filter(slug__startswith="propiedad-demostracion-").order_by("slug"))
+        demo_listings = list(Listing.objects.filter(Q(slug__startswith="propiedad-demostracion-") | Q(slug__startswith="casa-residencial-demo-")).order_by("slug"))
         for index, listing in enumerate(demo_listings):
             ListingMedia.objects.get_or_create(listing=listing, media=assets[index % len(assets)], defaults={"role": "HERO", "sort_order": 0})
             for gallery_index in range(1, 7):
@@ -183,6 +219,21 @@ class Command(BaseCommand):
                     media=assets[(index + gallery_index + 1) % len(assets)],
                     defaults={"role": "GALLERY", "sort_order": gallery_index},
                 )
+
+        demo_locations = list(Municipality.objects.filter(is_active=True).select_related("state").order_by("state__name", "name")[:8])
+        for index, demo_municipality in enumerate(demo_locations):
+            content = LocationContent.all_objects.filter(municipality=demo_municipality).first()
+            if not content:
+                content = LocationContent(municipality=demo_municipality, slug=f"{slugify(demo_municipality.name)}-demo", created_by=users[0])
+            content.description = f"Conoce {demo_municipality.name} mediante contenido y propiedades demostrativas de CasaViva."
+            content.hero_media = assets[(index + 3) % len(assets)]
+            content.is_featured = True
+            content.latitude = Decimal("19.400000") + Decimal(index) * Decimal("0.018000")
+            content.longitude = Decimal("-99.200000") + Decimal(index) * Decimal("0.014000")
+            content.archived_at = None
+            content.archived_by = None
+            content.updated_by = users[0]
+            content.save()
 
         today = timezone.localdate()
         channels = [("INSTAGRAM","instagram","paid_social"),("FACEBOOK","facebook","paid_social"),("TIKTOK","tiktok","paid_social"),("GOOGLE","google","paid_search")]

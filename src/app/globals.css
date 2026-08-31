@@ -585,11 +585,15 @@ h2 {
 .hero-dots button.active {
   background: #fff;
 }
-.location-strip {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
+.location-carousel {
+  position: relative;
+}
+.location-carousel .horizontal-carousel-track {
   gap: 5px;
-  overflow: hidden;
+}
+.location-carousel .location-tile {
+  flex: 0 0 clamp(180px, 16.5vw, 300px);
+  width: clamp(180px, 16.5vw, 300px);
 }
 .location-tile {
   height: clamp(400px, 43vw, 650px);
@@ -612,7 +616,7 @@ h2 {
 .location-tile:hover img {
   transform: scale(1.035);
 }
-.location-tile span {
+.location-tile .location-name {
   position: absolute;
   z-index: 1;
   bottom: 25px;
@@ -692,37 +696,59 @@ h2 {
 .development-carousel {
   position: relative;
 }
-.development-carousel-viewport {
+.horizontal-carousel-viewport {
   overflow-x: auto;
   scrollbar-width: none;
   cursor: grab;
   touch-action: pan-y;
+  scroll-behavior: smooth;
+  scroll-snap-type: x proximity;
 }
-.development-carousel-viewport::-webkit-scrollbar {
+.horizontal-carousel-viewport::-webkit-scrollbar {
   display: none;
 }
-.development-carousel-viewport.is-dragging {
+.horizontal-carousel-viewport.is-dragging {
   cursor: grabbing;
   user-select: none;
 }
-.development-carousel-track {
+.horizontal-carousel-track {
   display: flex;
+  flex-wrap: nowrap;
   gap: 24px;
   width: max-content;
+}
+.horizontal-carousel-track > * {
+  scroll-snap-align: start;
 }
 .development-carousel .development-card {
   width: clamp(280px, 42vw, 520px);
   flex: 0 0 clamp(280px, 42vw, 520px);
 }
-.development-carousel-controls {
+.horizontal-carousel-controls {
   display: flex;
   justify-content: flex-end;
   gap: 6px;
   margin: -8px 0 16px;
 }
-.development-carousel-controls .icon-button {
+.horizontal-carousel-controls .icon-button {
   border: 1px solid var(--cv-gray-300);
   background: #fff;
+}
+.location-carousel .horizontal-carousel-controls {
+  padding: 0 var(--gutter);
+}
+.media-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, #d8d4cb, #aaa69e);
+  color: rgba(255, 255, 255, 0.78);
+}
+.media-fallback b {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
 }
 .development-card img {
   width: 100%;
@@ -731,7 +757,10 @@ h2 {
   transition: transform 0.4s;
 }
 .development-card .image-wrap {
+  position: relative;
+  aspect-ratio: 1.45;
   overflow: hidden;
+  background: #cbc8c1;
 }
 .development-card:hover img {
   transform: scale(1.025);
@@ -1352,6 +1381,10 @@ h2 {
   position: relative;
   background-size: cover;
   background-position: center;
+  background-color: #8e8b84;
+}
+.page-hero.no-media {
+  background-image: linear-gradient(145deg, #aaa69e, #6f6d68);
 }
 .page-hero:after {
   content: "";
@@ -1371,6 +1404,15 @@ h2 {
 }
 .development-hero {
   min-height: 78vh;
+}
+.development-detail-loading {
+  min-height: 55vh;
+}
+.map-unavailable {
+  display: grid;
+  place-items: center;
+  background: var(--cv-gray-100);
+  color: var(--cv-text-muted);
 }
 .editorial-body {
   font-size: 18px;
@@ -1864,14 +1906,9 @@ h2 {
   .desktop-nav {
     gap: 16px;
   }
-  .location-strip {
-    overflow-x: auto;
-    grid-template-columns: repeat(6, 220px);
-    padding-left: var(--gutter);
-    scroll-snap-type: x mandatory;
-  }
-  .location-tile {
-    scroll-snap-align: start;
+  .location-carousel .location-tile {
+    flex-basis: 30vw;
+    width: 30vw;
   }
   .development-grid {
     gap: 35px 16px;
@@ -1988,8 +2025,9 @@ h2 {
   .section-heading {
     margin-bottom: 35px;
   }
-  .location-strip {
-    grid-template-columns: repeat(6, 70vw);
+  .location-carousel .location-tile {
+    flex-basis: 72vw;
+    width: 72vw;
   }
   .location-tile {
     height: 460px;

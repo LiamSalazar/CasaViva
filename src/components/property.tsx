@@ -143,12 +143,16 @@ export function DevelopmentCard({
       className="development-card"
     >
       <div className="image-wrap">
-        <Image
-          src={development.heroImage}
-          alt={development.name}
-          width={900}
-          height={620}
-        />
+        {development.heroImage ? (
+          <Image
+            src={development.heroImage}
+            alt={development.name}
+            width={900}
+            height={620}
+          />
+        ) : (
+          <span className="media-fallback" aria-label={`${development.name} sin fotografía`}><b>CASAVIVA</b></span>
+        )}
       </div>
       <h3>{development.name}</h3>
       <p>

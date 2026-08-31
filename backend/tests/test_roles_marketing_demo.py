@@ -15,7 +15,8 @@ from apps.analytics.models import AnonymousVisitor, WebSession
 from apps.crm.models import Inquiry, Lead, Sale, Visit
 from apps.marketing.models import MarketingCampaign, MarketingSpend
 from apps.listings.models import Listing
-from apps.catalog.models import PropertyOffering
+from apps.catalog.models import Development, DevelopmentMedia, PropertyOffering
+from apps.content.models import LocationContent
 from apps.media_library.models import MediaAsset
 
 
@@ -144,5 +145,12 @@ def test_seed_demo_is_idempotent_and_populates_business_areas(monkeypatch):
     photos = MediaAsset.objects.filter(alt_text__startswith="demo-real-photo-")
     assert photos.count() >= 10
     assert all(photo.mime_type.startswith("image/") for photo in photos)
+    published_demo = Development.objects.filter(slug__startswith="residencial-demo-", is_published=True)
+    assert published_demo.count() == 8
+    for development in published_demo:
+        assert DevelopmentMedia.objects.filter(development=development, role="HERO", media__alt_text__startswith="demo-real-photo-").exists()
+        assert DevelopmentMedia.objects.filter(development=development, role="GALLERY", media__alt_text__startswith="demo-real-photo-").count() >= 2
+        assert PropertyOffering.objects.filter(source_type="DEVELOPER", development_model__development=development, listing__is_published=True).exists()
+    assert LocationContent.objects.filter(is_featured=True, hero_media__alt_text__startswith="demo-real-photo-").count() >= 7
     call_command("reset_demo_data")
     assert PropertyOffering.objects.count() >= 60

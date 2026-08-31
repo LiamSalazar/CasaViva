@@ -3,6 +3,7 @@ from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.db.models import Q
 from apps.analytics.models import AnalyticsEvent, WebSession, AnonymousVisitor
 from apps.crm.models import ConsentRecord, Inquiry, LeadInterest, LeadStageHistory, Visit, Sale, Lead
 from apps.listings.models import AvailabilityRecord, PriceRecord, Listing
@@ -12,6 +13,7 @@ from apps.listings.models import ListingMedia
 from apps.marketing.models import MarketingCampaign, MarketingSpend
 from apps.content.models import Guide, HomeContent, HomeHeroSlide, LocationContent
 from apps.audit.models import AuditEvent
+from apps.media_library.models import MediaAsset
 
 
 class Command(BaseCommand):
@@ -24,6 +26,7 @@ class Command(BaseCommand):
             raise CommandError("ABORTADO: reset_demo_data exige CASAVIVA_MODE=demo y la base exacta casaviva_demo.")
         for model in [AuditEvent, AnalyticsEvent, WebSession, AnonymousVisitor, ConsentRecord, Sale, Visit, LeadInterest, Inquiry, LeadStageHistory, Lead, MarketingSpend, MarketingCampaign, HomeHeroSlide, Guide, HomeContent, LocationContent, ListingMedia, DevelopmentMedia, Listing, AvailabilityRecord, PriceRecord, PropertyOffering, DevelopmentModel, HousingModel, Development, Developer]:
             getattr(model, "all_objects", model.objects).all().delete()
+        MediaAsset.objects.filter(Q(alt_text__startswith="demo-asset-") | Q(alt_text__startswith="demo-photo-")).delete()
         call_command("seed_system")
         call_command("seed_reference_catalog")
         call_command("seed_demo")

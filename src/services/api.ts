@@ -48,6 +48,31 @@ function numberOrUndefined(value: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+function mapDevelopment(d: Record<string, any>): Development {
+  return {
+    ...d,
+    id: String(d.id),
+    slug: d.slug || "",
+    name: d.name || "",
+    developerName: d.developerName || "",
+    description: d.description || "",
+    shortDescription: d.shortDescription || "",
+    state: d.state || "",
+    municipality: d.municipality || "",
+    heroImage: typeof d.heroImage === "string" ? d.heroImage : "",
+    gallery: Array.isArray(d.gallery) ? d.gallery.filter((item): item is string => typeof item === "string" && item.length > 0) : [],
+    amenities: Array.isArray(d.amenities) ? d.amenities : [],
+    latitude: numberOrUndefined(d.latitude),
+    longitude: numberOrUndefined(d.longitude),
+    createdAt: d.createdAt || "",
+    updatedAt: d.updatedAt || "",
+    propertyIds: [],
+    published: Boolean(d.published),
+    featured: Boolean(d.featured),
+    currentMinPrice: numberOrUndefined(d.currentMinPrice),
+  };
+}
+
 export function mapProperty(raw: Record<string, any>): Property {
   const p = raw.public_data || raw;
   const offering = raw.offering_detail;
@@ -212,10 +237,11 @@ export const api = {
   },
   home: () => apiFetch<Record<string, any>>("/api/v1/public/home/"),
   searchOptions: () => apiFetch<SearchOptions>("/api/v1/public/search-options/"),
-  developments: async () => (await apiFetch<{ results: Development[] }>("/api/v1/public/developments/")).results.map((d) => ({ ...d, heroImage: d.heroImage || PLACEHOLDER, gallery: d.gallery?.length ? d.gallery : [PLACEHOLDER], createdAt: d.createdAt || "", updatedAt: d.updatedAt || "", propertyIds: [], currentMinPrice: numberOrUndefined(d.currentMinPrice) })),
+  developments: async () => (await apiFetch<{ results: Record<string, any>[] }>("/api/v1/public/developments/")).results.map(mapDevelopment),
+  developmentBySlug: async (slug: string) => mapDevelopment(await apiFetch<Record<string, any>>(`/api/v1/public/developments/${encodeURIComponent(slug)}/`)),
   locations: async () => {
     const states = await apiFetch<Array<{ id: string; name: string; municipalities: Array<{ id: string; name: string; slug?: string; description: string; heroImage?: string; is_featured: boolean; latitude?: string; longitude?: string; content_id?: string }> }>>("/api/v1/public/locations/");
-    return states.flatMap((s) => s.municipalities.map((m): Location => ({ id: m.id, stateId: s.id, slug: m.slug || m.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-"), name: m.name, state: s.name, description: m.description || "", heroImage: m.heroImage || PLACEHOLDER, featured: m.is_featured, latitude: numberOrUndefined(m.latitude), longitude: numberOrUndefined(m.longitude), contentId: m.content_id, hasContent: Boolean(m.content_id) })));
+    return states.flatMap((s) => s.municipalities.map((m): Location => ({ id: m.id, stateId: s.id, slug: m.slug || m.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-"), name: m.name, state: s.name, description: m.description || "", heroImage: m.heroImage || "", featured: Boolean(m.is_featured), latitude: numberOrUndefined(m.latitude), longitude: numberOrUndefined(m.longitude), contentId: m.content_id, hasContent: Boolean(m.content_id) })));
   },
   guides: async () => (await fetchAllPages<Guide>("/api/v1/public/guides/")).map((g) => ({ ...g, heroImage: g.heroImage || PLACEHOLDER })),
   guide: async (slug: string) => {

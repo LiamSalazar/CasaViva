@@ -9,7 +9,7 @@ import { PublicHeaderOverlay, Footer } from "@/components/ui";
 import { DevelopmentCard } from "@/components/property";
 import { formatCurrency, slugify } from "@/lib/utils";
 import { useCasaViva } from "@/services";
-import type { Development, Property } from "@/types";
+import type { Development, Location, Property } from "@/types";
 
 export function HomePage() {
   const { properties, locations, developments, homeContent } = useCasaViva();
@@ -120,21 +120,11 @@ export function HomePage() {
               </p>
             </div>
           </div>
-          <div className="location-strip">
-            {homeContent.featuredLocationIds
-              .map((id) => locations.find((l) => l.id === id))
-              .filter(Boolean)
-              .map((l) => (
-                <Link
-                  href={`/ubicaciones/${l!.slug}`}
-                  className="location-tile"
-                  key={l!.id}
-                >
-                  <Image src={l!.heroImage} alt={l!.name} fill sizes="25vw" />
-                  <span>{l!.name}</span>
-                </Link>
-              ))}
-          </div>
+          <LocationCarousel
+            locations={homeContent.featuredLocationIds
+              .map((id) => locations.find((location) => location.id === id))
+              .filter((location): location is NonNullable<typeof location> => Boolean(location))}
+          />
         </section>}
         {featuredProperty && (
           <Link
@@ -250,6 +240,23 @@ export function HomePage() {
   );
 }
 
+function LocationCarousel({ locations }: { locations: Location[] }) {
+  return (
+    <HorizontalCarousel name="Ubicaciones" className="location-carousel" step={320}>
+      {locations.map((location) => (
+        <Link href={`/ubicaciones/${location.slug}`} className="location-tile" key={location.id}>
+          {location.heroImage ? (
+            <Image src={location.heroImage} alt={location.name} fill sizes="(max-width: 767px) 72vw, (max-width: 1024px) 30vw, 17vw" />
+          ) : (
+            <span className="media-fallback" aria-label={`${location.name} sin fotografía`}><b>CASAVIVA</b></span>
+          )}
+          <span className="location-name">{location.name}</span>
+        </Link>
+      ))}
+    </HorizontalCarousel>
+  );
+}
+
 function DevelopmentCarousel({
   developments,
   properties,
@@ -257,13 +264,33 @@ function DevelopmentCarousel({
   developments: Development[];
   properties: Property[];
 }) {
+  return (
+    <HorizontalCarousel name="Desarrollos" className="development-carousel" step={360}>
+      {developments.map((development) => (
+        <DevelopmentCard key={development.id} development={development} properties={properties} />
+      ))}
+    </HorizontalCarousel>
+  );
+}
+
+function HorizontalCarousel({
+  name,
+  className,
+  step,
+  children,
+}: {
+  name: string;
+  className: string;
+  step: number;
+  children: React.ReactNode;
+}) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef({ active: false, startX: 0, startScroll: 0, moved: false });
   const suppressClickRef = useRef(false);
   const [isDragging, setIsDragging] = useState(false);
 
   const move = (direction: number) => {
-    viewportRef.current?.scrollBy({ left: direction * 360, behavior: "smooth" });
+    viewportRef.current?.scrollBy({ left: direction * step, behavior: "smooth" });
   };
   const startDrag = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
@@ -290,13 +317,13 @@ function DevelopmentCarousel({
   };
 
   return (
-    <div className="development-carousel">
-      <div className="development-carousel-controls">
-        <button className="icon-button" type="button" onClick={() => move(-1)} aria-label="Desarrollos anteriores"><ChevronLeft /></button>
-        <button className="icon-button" type="button" onClick={() => move(1)} aria-label="Siguientes desarrollos"><ChevronRight /></button>
+    <div className={className} role="region" aria-label={`Carrusel de ${name}`} data-carousel={name.toLowerCase()}>
+      <div className="horizontal-carousel-controls">
+        <button className="icon-button" type="button" onClick={() => move(-1)} aria-label={`${name} anteriores`}><ChevronLeft /></button>
+        <button className="icon-button" type="button" onClick={() => move(1)} aria-label={`Siguientes ${name.toLowerCase()}`}><ChevronRight /></button>
       </div>
       <div
-        className={`development-carousel-viewport ${isDragging ? "is-dragging" : ""}`}
+        className={`horizontal-carousel-viewport ${isDragging ? "is-dragging" : ""}`}
         ref={viewportRef}
         onPointerDown={startDrag}
         onPointerMove={drag}
@@ -310,11 +337,7 @@ function DevelopmentCarousel({
           }
         }}
       >
-        <div className="development-carousel-track">
-          {developments.map((development) => (
-            <DevelopmentCard key={development.id} development={development} properties={properties} />
-          ))}
-        </div>
+        <div className="horizontal-carousel-track">{children}</div>
       </div>
     </div>
   );

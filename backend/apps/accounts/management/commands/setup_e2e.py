@@ -11,7 +11,7 @@ from django.utils import timezone
 from apps.accounts.models import User
 from apps.accounts.services import seed_groups
 from apps.catalog.models import DevelopmentMedia, DevelopmentModel, PropertyOffering, PropertyType
-from apps.content.models import Guide
+from apps.content.models import Guide, LocationContent
 from apps.geo.models import Municipality
 from apps.listings.models import AvailabilityRecord, Listing, ListingMedia, PriceRecord
 from apps.media_library.models import MediaAsset
@@ -193,4 +193,25 @@ class Command(BaseCommand):
                         media=asset,
                         defaults={"role": role, "sort_order": index},
                     )
+            location_asset = development_assets[0][1]
+            for index in range(8):
+                location_municipality, _ = Municipality.objects.get_or_create(
+                    state=municipality.state,
+                    name=f"Ubicación E2E {index + 1}",
+                    defaults={"is_active": True},
+                )
+                LocationContent.all_objects.update_or_create(
+                    municipality=location_municipality,
+                    defaults={
+                        "slug": f"ubicacion-e2e-{index + 1}",
+                        "description": "Ubicación destacada para probar el carrusel público.",
+                        "hero_media": location_asset,
+                        "is_featured": True,
+                        "latitude": 19.4 + index * 0.01,
+                        "longitude": -99.2 + index * 0.01,
+                        "archived_at": None,
+                        "created_by": owner_user,
+                        "updated_by": owner_user,
+                    },
+                )
         self.stdout.write(self.style.SUCCESS("Usuarios E2E aislados listos."))

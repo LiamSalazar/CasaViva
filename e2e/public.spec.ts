@@ -40,6 +40,63 @@ test("slug inexistente muestra la página 404 sin traceback", async ({ page }) =
   await expect(page.locator("body")).not.toContainText("Traceback");
 });
 
+test("home muestra ubicaciones en una sola línea con media real, flechas, drag y enlaces", async ({ page }) => {
+  await page.goto("/");
+  const carousel = page.getByRole("region", { name: "Carrusel de Ubicaciones" });
+  const viewport = carousel.locator(".horizontal-carousel-viewport");
+  const track = carousel.locator(".horizontal-carousel-track");
+  expect(await carousel.locator(".location-tile").count()).toBeGreaterThan(6);
+  expect(await track.evaluate((element) => getComputedStyle(element).flexWrap)).toBe("nowrap");
+  expect(await viewport.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+
+  const locationsResponse = await page.request.get("/api/v1/public/locations/");
+  const states = await locationsResponse.json() as Array<{ municipalities: Array<{ slug: string | null; heroImage: string | null; is_featured: boolean }> }>;
+  const firstLocation = states.flatMap((state) => state.municipalities).find((location) => location.is_featured && location.slug && location.heroImage);
+  expect(firstLocation).toBeTruthy();
+  const href = `/ubicaciones/${firstLocation!.slug}`;
+  const locationLink = carousel.locator(`a[href="${href}"]`);
+  await expect(locationLink).toBeVisible();
+  const renderedSource = await locationLink.locator("img").evaluate((image: HTMLImageElement) => new URL(image.currentSrc).searchParams.get("url") || image.currentSrc);
+  expect(renderedSource).toBe(firstLocation!.heroImage);
+  expect(renderedSource).not.toContain("casaviva-placeholder.svg");
+
+  const initial = await viewport.evaluate((element) => element.scrollLeft);
+  await page.getByRole("button", { name: "Siguientes ubicaciones" }).click();
+  await expect.poll(() => viewport.evaluate((element) => element.scrollLeft)).toBeGreaterThan(initial);
+  await viewport.evaluate((element) => { element.scrollLeft = 0; });
+  const box = await viewport.boundingBox();
+  expect(box).toBeTruthy();
+  await page.mouse.move(box!.x + box!.width * 0.8, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width * 0.2, box!.y + box!.height / 2, { steps: 8 });
+  await page.mouse.up();
+  expect(await viewport.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+
+  await expect(page.locator(`[data-carousel="ubicaciones"] a[href="${href}"]`)).toHaveAttribute("href", href);
+  await page.goto(href);
+  await expect(page).toHaveURL(new RegExp(`${href}$`));
+});
+
+test("detalle directo sin galería usa estado neutral y no crea placeholders", async ({ page }) => {
+  await page.route("**/api/v1/public/developments/no-media-e2e/", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      id: "00000000-0000-0000-0000-000000000099", slug: "no-media-e2e", name: "Desarrollo sin media",
+      developerName: "Constructora", description: "Sin multimedia cargada.", shortDescription: "", state: "Estado de México",
+      municipality: "Tecámac", latitude: null, longitude: null, heroImage: null, gallery: [], amenities: null,
+      published: true, featured: false, publishedListingCount: 0, availableListingCount: 0, currentMinPrice: null,
+    }),
+  }));
+  await page.route("**/api/v1/public/listings/?development=00000000-0000-0000-0000-000000000099", (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ count: 0, next: null, previous: null, results: [] }),
+  }));
+  await page.goto("/desarrollos/no-media-e2e");
+  await expect(page.getByRole("heading", { name: "Desarrollo sin media" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Galería" })).toHaveCount(0);
+  await expect(page.locator('img[src*="casaviva-placeholder.svg"]')).toHaveCount(0);
+});
+
 test("detalle de guía fuera de la primera página usa su endpoint y las galerías abren fotos y planos", async ({ page }) => {
   const assertNoErrors = failOnPageErrors(page);
   await page.goto("/guias/guia-publica-e2e-00");
@@ -83,6 +140,14 @@ test("desarrollo y ubicación cargan el inventario completo y la galería del de
 test("@mobile mantiene accesibles home, resultados y detalle", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("h1")).toBeVisible();
+  const locationViewport = page.getByRole("region", { name: "Carrusel de Ubicaciones" }).locator(".horizontal-carousel-viewport");
+  expect(await locationViewport.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+  if ((page.viewportSize()?.width || 0) <= 767) {
+    const viewportWidth = await locationViewport.evaluate((element) => element.clientWidth);
+    const cardWidth = await page.getByRole("region", { name: "Carrusel de Ubicaciones" }).locator(".location-tile").first().evaluate((element) => element.getBoundingClientRect().width);
+    expect(cardWidth).toBeLessThan(viewportWidth);
+    expect(cardWidth).toBeGreaterThan(viewportWidth * 0.6);
+  }
   await page.goto("/propiedades?propertyType=duplex");
   await expect(page.getByRole("button", { name: "Filtros" })).toBeVisible();
   await page.goto("/propiedades/duplex-e2e-1");

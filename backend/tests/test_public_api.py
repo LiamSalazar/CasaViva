@@ -32,6 +32,17 @@ def test_public_listing_visibility_and_no_internal_leak(client, catalog):
 
 
 @pytest.mark.django_db
+def test_public_development_without_media_keeps_gallery_empty(client, catalog):
+    development = catalog["development"]
+    development.is_published = True
+    development.save(update_fields=["is_published", "updated_at"])
+    response = client.get(f"/api/v1/public/developments/{development.slug}/")
+    assert response.status_code == 200
+    assert response.data["heroImage"] is None
+    assert response.data["gallery"] == []
+
+
+@pytest.mark.django_db
 def test_public_inquiry_deduplicates_exact_email(client, catalog):
     call_command("seed_system")
     payload = {"first_name": "Persona", "email": "PERSONA@example.test", "message": "Información", "listing_slug": "casa-modelo", "privacy_consent": True}

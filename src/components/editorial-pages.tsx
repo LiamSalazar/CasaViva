@@ -16,18 +16,19 @@ import { EmptyState, Footer, PublicHeader, useToast } from "@/components/ui";
 import { formatDate, formatLocation, uid } from "@/lib/utils";
 import { inquiryService, useCasaViva } from "@/services";
 import { api } from "@/services/api";
-import type { Guide, Inquiry, Property } from "@/types";
+import type { Development, Guide, Inquiry, Property } from "@/types";
 import { ensureCurrentAnalyticsIdentity, trackEvent } from "@/components/analytics-provider";
 
 export function DevelopmentsPage() {
   const { developments, properties } = useCasaViva();
   const list = developments.filter((d) => d.published);
+  const heroImage = list.find((development) => development.heroImage)?.heroImage;
   return (
     <>
       <PublicHeader />
       <div
-        className="page-hero"
-        style={{ backgroundImage: `url(${list[0]?.heroImage})` }}
+        className={`page-hero ${heroImage ? "" : "no-media"}`}
+        style={heroImage ? { backgroundImage: `url(${heroImage})` } : undefined}
       >
         <div>
           <span className="eyebrow">Comunidades para descubrir</span>
@@ -54,20 +55,35 @@ export function DevelopmentsPage() {
   );
 }
 export function DevelopmentDetailPage({ slug }: { slug: string }) {
-  const { developments, properties } = useCasaViva();
-  const d = developments.find((x) => x.slug === slug && x.published);
-  const [models, setModels] = useState<Property[]>([]);
-  const [inventoryLoaded, setInventoryLoaded] = useState(false);
+  const [developmentResult, setDevelopmentResult] = useState<{ slug: string; item: Development | null } | null>(null);
+  const [inventoryResult, setInventoryResult] = useState<{ developmentId: string; items: Property[] } | null>(null);
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
   useEffect(() => {
     let active = true;
-    if (!d) return () => { active = false; };
-    api.publicListingsAll(`development=${encodeURIComponent(d.id)}`)
-      .then((items) => { if (active) { setModels(items); setInventoryLoaded(true); } })
-      .catch(() => { if (active) { setModels([]); setInventoryLoaded(true); } });
+    api.developmentBySlug(slug)
+      .then((item) => { if (active) setDevelopmentResult({ slug, item }); })
+      .catch(() => { if (active) setDevelopmentResult({ slug, item: null }); });
     return () => { active = false; };
-  }, [d]);
-  if (!d)
+  }, [slug]);
+  const development = developmentResult?.slug === slug ? developmentResult.item : null;
+  const developmentLoaded = developmentResult?.slug === slug;
+  useEffect(() => {
+    let active = true;
+    if (!development) return () => { active = false; };
+    api.publicListingsAll(`development=${encodeURIComponent(development.id)}`)
+      .then((items) => { if (active) setInventoryResult({ developmentId: development.id, items }); })
+      .catch(() => { if (active) setInventoryResult({ developmentId: development.id, items: [] }); });
+    return () => { active = false; };
+  }, [development]);
+  if (!developmentLoaded)
+    return (
+      <>
+        <PublicHeader />
+        <main className="narrow section"><div className="skeleton development-detail-loading" aria-label="Cargando desarrollo" /></main>
+        <Footer />
+      </>
+    );
+  if (!development)
     return (
       <>
         <PublicHeader />
@@ -79,15 +95,21 @@ export function DevelopmentDetailPage({ slug }: { slug: string }) {
         <Footer />
       </>
     );
+  const d = development;
+  const models = inventoryResult?.developmentId === d.id ? inventoryResult.items : [];
+  const inventoryLoaded = inventoryResult?.developmentId === d.id;
+  const gallery = d.gallery ?? [];
+  const amenities = d.amenities ?? [];
+  const mappableModels = models.filter((model) => Number.isFinite(model.latitude) && Number.isFinite(model.longitude));
   const moveGallery = (delta: number) => setGalleryIndex((current) =>
-    current === null ? 0 : (current + delta + d.gallery.length) % d.gallery.length,
+    current === null ? 0 : (current + delta + gallery.length) % gallery.length,
   );
   return (
     <>
       <PublicHeader />
       <div
-        className="page-hero development-hero"
-        style={{ backgroundImage: `url(${d.heroImage})` }}
+        className={`page-hero development-hero ${d.heroImage ? "" : "no-media"}`}
+        style={d.heroImage ? { backgroundImage: `url(${d.heroImage})` } : undefined}
       >
         <div>
           <span className="eyebrow">{d.developerName}</span>
@@ -103,13 +125,13 @@ export function DevelopmentDetailPage({ slug }: { slug: string }) {
             <p className="editorial-body">{d.description}</p>
           </div>
         </section>
-        <section className="section-tight">
+        {gallery.length > 0 && <section className="section-tight">
           <div className="inline-heading">
             <h2>Galería</h2>
           </div>
           <div className="secondary-gallery">
-            {d.gallery.slice(0, 5).map((src, i) => (
-              <button key={src} type="button" onClick={() => setGalleryIndex(i)} aria-label={`Abrir foto ${i + 1} de ${d.name}`}>
+            {gallery.slice(0, 5).map((src, i) => (
+              <button key={src + i} type="button" onClick={() => setGalleryIndex(i)} aria-label={`Abrir foto ${i + 1} de ${d.name}`}>
                 <Image
                   src={src}
                   alt={`${d.name}, foto ${i + 1}`}
@@ -119,53 +141,41 @@ export function DevelopmentDetailPage({ slug }: { slug: string }) {
               </button>
             ))}
           </div>
-          {galleryIndex !== null && d.gallery.length > 0 && (
+          {galleryIndex !== null && (
             <div className="fullscreen-gallery" role="dialog" aria-modal="true" aria-label={`Galería de ${d.name}`}>
               <header>
-                <span>Foto {galleryIndex + 1} / {d.gallery.length}</span>
+                <span>Foto {galleryIndex + 1} / {gallery.length}</span>
                 <button className="icon-button" type="button" onClick={() => setGalleryIndex(null)} aria-label="Cerrar"><X /></button>
               </header>
               <div className="fullscreen-image">
-                <Image src={d.gallery[galleryIndex]} alt={`${d.name}, foto ${galleryIndex + 1}`} fill sizes="100vw" />
+                <Image src={gallery[galleryIndex]} alt={`${d.name}, foto ${galleryIndex + 1}`} fill sizes="100vw" />
               </div>
-              {d.gallery.length > 1 && <>
+              {gallery.length > 1 && <>
                 <button className="gallery-nav prev" type="button" onClick={() => moveGallery(-1)} aria-label="Anterior"><ChevronLeft /></button>
                 <button className="gallery-nav next" type="button" onClick={() => moveGallery(1)} aria-label="Siguiente"><ChevronRight /></button>
               </>}
             </div>
           )}
-        </section>
-        <section className="section">
+        </section>}
+        {amenities.length > 0 && <section className="section">
           <div className="section-heading">
             <span className="eyebrow">Amenidades</span>
             <h2>Espacios que acompañan la vida</h2>
           </div>
           <div className="amenity-chips">
-            {d.amenities.map((a) => (
+            {amenities.map((a) => (
               <span className="amenity-chip" key={a}>
                 {a}
               </span>
             ))}
           </div>
-        </section>
+        </section>}
         <section className="section-tight">
           <div className="inline-heading">
             <h2>Ubicación</h2>
           </div>
           {inventoryLoaded ? (
-            <DynamicMapView
-              properties={
-                models.length
-                  ? models
-                  : [
-                      {
-                        ...properties[0],
-                        latitude: d.latitude,
-                        longitude: d.longitude,
-                      },
-                    ]
-              }
-            />
+            mappableModels.length ? <DynamicMapView properties={mappableModels} /> : <div className="map-shell map-unavailable"><span>Ubicación sin coordenadas disponibles.</span></div>
           ) : <div className="map-shell skeleton" />}
         </section>
         <section className="section">
@@ -233,8 +243,8 @@ export function LocationPage({ slug }: { slug: string }) {
     <>
       <PublicHeader />
       <div
-        className="page-hero development-hero"
-        style={{ backgroundImage: `url(${location.heroImage})` }}
+        className={`page-hero development-hero ${location.heroImage ? "" : "no-media"}`}
+        style={location.heroImage ? { backgroundImage: `url(${location.heroImage})` } : undefined}
       >
         <div>
           <span className="eyebrow">{location.state}</span>
