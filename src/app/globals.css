@@ -689,6 +689,41 @@ h2 {
   grid-template-columns: repeat(2, 1fr);
   gap: 50px 24px;
 }
+.development-carousel {
+  position: relative;
+}
+.development-carousel-viewport {
+  overflow-x: auto;
+  scrollbar-width: none;
+  cursor: grab;
+  touch-action: pan-y;
+}
+.development-carousel-viewport::-webkit-scrollbar {
+  display: none;
+}
+.development-carousel-viewport.is-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+.development-carousel-track {
+  display: flex;
+  gap: 24px;
+  width: max-content;
+}
+.development-carousel .development-card {
+  width: clamp(280px, 42vw, 520px);
+  flex: 0 0 clamp(280px, 42vw, 520px);
+}
+.development-carousel-controls {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin: -8px 0 16px;
+}
+.development-carousel-controls .icon-button {
+  border: 1px solid var(--cv-gray-300);
+  background: #fff;
+}
 .development-card img {
   width: 100%;
   aspect-ratio: 1.45;

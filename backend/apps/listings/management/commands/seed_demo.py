@@ -38,6 +38,10 @@ DEMO_PHOTO_URLS = [
     "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1400&q=82",  # amenidades
     "https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?auto=format&fit=crop&w=1400&q=82",
     "https://images.unsplash.com/photo-1600585154526-990dced4db0d?auto=format&fit=crop&w=1400&q=82",
+    "https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1400&q=82",
+    "https://images.unsplash.com/photo-1600121848594-d8644e57abab?auto=format&fit=crop&w=1400&q=82",
+    "https://images.unsplash.com/photo-1600607688960-e095ff83135c?auto=format&fit=crop&w=1400&q=82",
+    "https://images.unsplash.com/photo-1600566752355-35792bedcfea?auto=format&fit=crop&w=1400&q=82",
 ]
 
 
@@ -104,6 +108,14 @@ class Command(BaseCommand):
         for index in range(10):
             developer = developers[index % len(developers)]
             development, _ = Development.all_objects.get_or_create(slug=f"residencial-demo-{index+1}", defaults={"developer": developer, "name": f"Residencial Demo {index+1}", "state": municipality.state, "municipality": municipality, "is_active": True, "is_published": index < 8, "created_by": users[0], "updated_by": users[0]})
+            Development.all_objects.filter(pk=development.pk).update(
+                developer=developer,
+                state=municipality.state,
+                municipality=municipality,
+                is_active=True,
+                is_published=index < 8,
+                updated_by=users[0],
+            )
             model, _ = HousingModel.all_objects.get_or_create(slug=f"modelo-demo-{index+1}", defaults={"developer": developer, "name": f"Modelo Demo {index+1}", "created_by": users[0], "updated_by": users[0]})
             __import__("apps.catalog.models", fromlist=["DevelopmentModel"]).DevelopmentModel.all_objects.get_or_create(development=development, housing_model=model, defaults={"created_by": users[0], "updated_by": users[0]})
 
@@ -128,24 +140,26 @@ class Command(BaseCommand):
             if index % 13 == 0:
                 listing.archived_at = timezone.now() - timedelta(days=4); listing.archived_by = users[0]; listing.save(update_fields=["archived_at", "archived_by"])
 
+        media_model = __import__("apps.media_library.models", fromlist=["MediaAsset"]).MediaAsset
+        # Retira assets fotográficos de seeds demo anteriores que eran geométricos.
+        media_model.objects.filter(alt_text__startswith="demo-asset-").delete()
+        media_model.objects.filter(alt_text__startswith="demo-photo-").delete()
         assets = []
-        colors = [(224,216,204), (196,203,197), (210,198,187), (184,192,204), (218,208,190), (198,184,175), (205,194,181), (190,202,205)]
         for index, url in enumerate(DEMO_PHOTO_URLS):
-            key = f"demo-photo-{index}"
-            existing = __import__("apps.media_library.models", fromlist=["MediaAsset"]).MediaAsset.objects.filter(alt_text=key).first()
+            key = f"demo-real-photo-{index}"
+            existing = media_model.objects.filter(alt_text=key).first()
             if existing: assets.append(existing); continue
             downloaded = download_demo_photo(url)
-            if downloaded:
-                photo_bytes, content_type = downloaded
-                extension = "jpg" if content_type in {"image/jpeg", "image/jpg"} else "png"
-                filename = f"{key}.{extension}"
-            else:
-                image = Image.new("RGB", (1200, 760), colors[index]); draw = ImageDraw.Draw(image); draw.rectangle((90, 100, 1110, 660), outline=(55,55,55), width=5); draw.rectangle((160, 190, 560, 590), fill=(245,242,236)); draw.rectangle((640, 190, 1040, 590), fill=(235,232,225)); draw.line((600,100,600,660), fill=(55,55,55), width=3)
-                output = io.BytesIO(); image.save(output, format="PNG"); photo_bytes = output.getvalue(); filename = f"{key}.png"
-            upload = SimpleUploadedFile(filename, photo_bytes, content_type=content_type if downloaded else "image/png")
+            if not downloaded:
+                continue
+            photo_bytes, content_type = downloaded
+            extension = "jpg" if content_type in {"image/jpeg", "image/jpg"} else "webp" if content_type == "image/webp" else "png"
+            upload = SimpleUploadedFile(f"{key}.{extension}", photo_bytes, content_type=content_type)
             assets.append(store_upload(upload, users[0], media_type="IMAGE", alt_text=key))
+        if len(assets) < 10:
+            raise CommandError(f"No se pudieron descargar suficientes fotografías demo: {len(assets)} de {len(DEMO_PHOTO_URLS)} disponibles; se requieren al menos 10.")
         floorplan_key = "demo-floorplan"
-        floorplan = __import__("apps.media_library.models", fromlist=["MediaAsset"]).MediaAsset.objects.filter(alt_text=floorplan_key).first()
+        floorplan = media_model.objects.filter(alt_text=floorplan_key).first()
         if not floorplan:
             image = Image.new("RGB", (1200, 760), (238, 235, 226)); draw = ImageDraw.Draw(image); draw.rectangle((90, 100, 1110, 660), outline=(55,55,55), width=5); draw.line((600,100,600,660), fill=(55,55,55), width=3); draw.line((90,380,1110,380), fill=(55,55,55), width=3)
             output = io.BytesIO(); image.save(output, format="PNG")
@@ -153,12 +167,22 @@ class Command(BaseCommand):
         demo_listings = list(Listing.objects.filter(slug__startswith="propiedad-demostracion-").order_by("slug"))
         for index, listing in enumerate(demo_listings):
             ListingMedia.objects.get_or_create(listing=listing, media=assets[index % len(assets)], defaults={"role": "HERO", "sort_order": 0})
-            ListingMedia.objects.get_or_create(listing=listing, media=assets[(index + 1) % len(assets)], defaults={"role": "GALLERY", "sort_order": 1})
-            ListingMedia.objects.get_or_create(listing=listing, media=floorplan, defaults={"role": "FLOORPLAN", "sort_order": 2})
+            for gallery_index in range(1, 7):
+                ListingMedia.objects.get_or_create(
+                    listing=listing,
+                    media=assets[(index + gallery_index) % len(assets)],
+                    defaults={"role": "GALLERY", "sort_order": gallery_index},
+                )
+            ListingMedia.objects.get_or_create(listing=listing, media=floorplan, defaults={"role": "FLOORPLAN", "sort_order": 7})
         demo_developments = list(Development.objects.filter(slug__startswith="residencial-demo-").order_by("slug"))
         for index, development in enumerate(demo_developments):
             DevelopmentMedia.objects.get_or_create(development=development, media=assets[index % len(assets)], defaults={"role": "HERO", "sort_order": 0})
-            DevelopmentMedia.objects.get_or_create(development=development, media=assets[(index + 2) % len(assets)], defaults={"role": "GALLERY", "sort_order": 1})
+            for gallery_index in range(1, 7):
+                DevelopmentMedia.objects.get_or_create(
+                    development=development,
+                    media=assets[(index + gallery_index + 1) % len(assets)],
+                    defaults={"role": "GALLERY", "sort_order": gallery_index},
+                )
 
         today = timezone.localdate()
         channels = [("INSTAGRAM","instagram","paid_social"),("FACEBOOK","facebook","paid_social"),("TIKTOK","tiktok","paid_social"),("GOOGLE","google","paid_search")]

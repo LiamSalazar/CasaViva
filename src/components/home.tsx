@@ -4,11 +4,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PublicHeaderOverlay, Footer } from "@/components/ui";
 import { DevelopmentCard } from "@/components/property";
 import { formatCurrency, slugify } from "@/lib/utils";
 import { useCasaViva } from "@/services";
+import type { Development, Property } from "@/types";
 
 export function HomePage() {
   const { properties, locations, developments, homeContent } = useCasaViva();
@@ -179,18 +180,12 @@ export function HomePage() {
                 Ver todos <ChevronRight size={16} />
               </Link>
             </div>
-            <div className="development-grid">
-              {homeContent.featuredDevelopmentIds
+            <DevelopmentCarousel
+              developments={homeContent.featuredDevelopmentIds
                 .map((id) => developments.find((d) => d.id === id))
-                .filter(Boolean)
-                .map((d) => (
-                  <DevelopmentCard
-                    key={d!.id}
-                    development={d!}
-                    properties={properties}
-                  />
-                ))}
-            </div>
+                .filter((d): d is NonNullable<typeof d> => Boolean(d))}
+              properties={properties}
+            />
           </div>
         </section>}
         <section
@@ -252,6 +247,76 @@ export function HomePage() {
       </main>
       <Footer />
     </>
+  );
+}
+
+function DevelopmentCarousel({
+  developments,
+  properties,
+}: {
+  developments: Development[];
+  properties: Property[];
+}) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef({ active: false, startX: 0, startScroll: 0, moved: false });
+  const suppressClickRef = useRef(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const move = (direction: number) => {
+    viewportRef.current?.scrollBy({ left: direction * 360, behavior: "smooth" });
+  };
+  const startDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    dragRef.current = { active: true, startX: event.clientX, startScroll: viewport.scrollLeft, moved: false };
+    setIsDragging(true);
+    viewport.setPointerCapture(event.pointerId);
+  };
+  const drag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const state = dragRef.current;
+    const viewport = viewportRef.current;
+    if (!state.active || !viewport) return;
+    const distance = event.clientX - state.startX;
+    if (Math.abs(distance) > 5) state.moved = true;
+    viewport.scrollLeft = state.startScroll - distance;
+  };
+  const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current.active) return;
+    if (viewportRef.current?.hasPointerCapture(event.pointerId)) viewportRef.current.releasePointerCapture(event.pointerId);
+    suppressClickRef.current = dragRef.current.moved;
+    dragRef.current.active = false;
+    setIsDragging(false);
+  };
+
+  return (
+    <div className="development-carousel">
+      <div className="development-carousel-controls">
+        <button className="icon-button" type="button" onClick={() => move(-1)} aria-label="Desarrollos anteriores"><ChevronLeft /></button>
+        <button className="icon-button" type="button" onClick={() => move(1)} aria-label="Siguientes desarrollos"><ChevronRight /></button>
+      </div>
+      <div
+        className={`development-carousel-viewport ${isDragging ? "is-dragging" : ""}`}
+        ref={viewportRef}
+        onPointerDown={startDrag}
+        onPointerMove={drag}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onClickCapture={(event) => {
+          if (suppressClickRef.current) {
+            event.preventDefault();
+            event.stopPropagation();
+            suppressClickRef.current = false;
+          }
+        }}
+      >
+        <div className="development-carousel-track">
+          {developments.map((development) => (
+            <DevelopmentCard key={development.id} development={development} properties={properties} />
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 

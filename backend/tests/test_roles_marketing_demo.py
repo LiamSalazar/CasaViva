@@ -16,6 +16,7 @@ from apps.crm.models import Inquiry, Lead, Sale, Visit
 from apps.marketing.models import MarketingCampaign, MarketingSpend
 from apps.listings.models import Listing
 from apps.catalog.models import PropertyOffering
+from apps.media_library.models import MediaAsset
 
 
 @pytest.mark.django_db
@@ -140,5 +141,8 @@ def test_seed_demo_is_idempotent_and_populates_business_areas(monkeypatch):
     assert (MarketingCampaign.objects.count(), Lead.objects.count(), Inquiry.objects.count(), Visit.objects.count(), Sale.objects.count()) == counts
     assert Listing.all_objects.count() >= 60
     assert WebSession.objects.count() >= 200
+    photos = MediaAsset.objects.filter(alt_text__startswith="demo-real-photo-")
+    assert photos.count() >= 10
+    assert all(photo.mime_type.startswith("image/") for photo in photos)
     call_command("reset_demo_data")
     assert PropertyOffering.objects.count() >= 60
