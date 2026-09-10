@@ -1,0 +1,27 @@
+name: Deploy Pilot
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions: { id-token: write, contents: read }
+concurrency: { group: production, cancel-in-progress: false }
+jobs:
+  deploy:
+    environment: production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: aws-actions/configure-aws-credentials@v5
+        with: { role-to-assume: "${{ vars.AWS_DEPLOY_ROLE_ARN }}", aws-region: mx-central-1 }
+      - uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and push immutable images
+        run: |
+          account="$(aws sts get-caller-identity --query Account --output text)"
+          registry="$account.dkr.ecr.mx-central-1.amazonaws.com"
+          docker buildx build --platform linux/arm64 -f docker/backend.Dockerfile -t "$registry/casaviva-backend:${GITHUB_SHA}" --push .
+          docker buildx build --platform linux/arm64 -f docker/frontend.Dockerfile -t "$registry/casaviva-frontend:${GITHUB_SHA}" --push .
+      - name: Deploy through SSM
+        run: |
+          command_id="$(aws ssm send-command --instance-ids '${{ vars.PILOT_INSTANCE_ID }}' --document-name AWS-RunShellScript --parameters commands="sudo /opt/casaviva/deploy.sh ${GITHUB_SHA}" --query Command.CommandId --output text)"
+          aws ssm wait command-executed --command-id "$command_id" --instance-id '${{ vars.PILOT_INSTANCE_ID }}'
+          aws ssm get-command-invocation --command-id "$command_id" --instance-id '${{ vars.PILOT_INSTANCE_ID }}'
