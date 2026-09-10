@@ -15,6 +15,13 @@
 - [ ] Bucket/CDN de media pública accesible sin URLs firmadas.
 - [ ] Founders configurados una sola vez y MFA verificado.
 - [ ] Correo público y enlaces de Facebook, Instagram y TikTok verificados.
+- [ ] Domicilio responsable, correo de privacidad, contacto/quejas y teléfono confirmados.
+- [ ] Aviso de Privacidad y Términos sin placeholders publicados mediante MFA reciente.
+- [ ] Todas las propiedades publicadas tienen autorización, proveedor, fuente y fecha de verificación.
+- [ ] `python manage.py check_production_readiness` verde con `casaviva_app`.
+- [ ] Turnstile server-side configurado si `ANTIBOT_ENABLED=true` y notificación SES/SMTP probada.
+- [ ] Budget 25/30/35, alarmas y destinatarios confirmados; no existe apagado automático.
+- [ ] Backup diario S3 y restauración aislada ensayados; RPO/RTO aceptados.
 - [ ] Dominio definitivo y todos sus subdominios relevantes funcionan por HTTPS.
 - [ ] No existe dependencia HTTP antes de activar HSTS.
 - [ ] HSTS probado primero con `0`/periodo corto y aumentado gradualmente.

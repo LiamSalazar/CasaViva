@@ -1,6 +1,6 @@
 # CasaViva
 
-CasaViva es una plataforma inmobiliaria modular con frontend editorial Next.js 16 y backend Django 6.1/DRF sobre PostgreSQL 18. La experiencia pública conserva el diseño original; los datos, la autenticación administrativa, el CRM, la auditoría, el tracking y BI provienen del backend.
+CasaViva es una plataforma modular de promoción de inmuebles, captación y canalización, con frontend editorial Next.js 16 y backend Django 6.1/DRF sobre PostgreSQL 18. No es propietaria, desarrolladora, parte vendedora ni financiadora. El proveedor correspondiente vende y formaliza la operación; CasaViva actúa como promotor externo.
 
 ## Ejecutar CasaViva localmente
 
@@ -133,6 +133,8 @@ Documentos: [arquitectura](docs/architecture.md), [modelo y diccionario](docs/da
 
 ## Preparación para producción
 
+La arquitectura AWS Pilot y sus comandos están en [docs/aws-pilot-architecture.md](docs/aws-pilot-architecture.md) y [docs/aws-pilot-runbook.md](docs/aws-pilot-runbook.md). Terraform sólo se planifica hasta contar con aprobación explícita; este repositorio no aplica infraestructura ni cambia DNS.
+
 La aplicación no obliga a elegir proveedor. Antes de desplegar: define `config.settings.production`, conecta PostgreSQL externo con SSL, configura `STORAGE_BACKEND=s3` y un bucket S3-compatible, sirve Next y `/api/` bajo HTTPS en el mismo sitio, ejecuta `migrate` con el migrator y después `harden_database_roles`, ejecuta `seed_system` y crea founders una sola vez. Sirve requests con `casaviva_app`, comprueba `/api/health/live/` y `/api/health/ready/`, configura backups externos y completa la [lista de producción](docs/production-checklist.md).
 
 Next incorpora los hosts autorizados para imágenes durante el build. Con storage/CDN remoto compila el frontend así (el hostname no es secreto):
@@ -143,4 +145,4 @@ docker build -f docker/frontend.Dockerfile \
   -t casaviva-frontend .
 ```
 
-Los objetos públicos deben ser accesibles mediante el bucket/CDN configurado porque las URLs no llevan firma (`AWS_QUERYSTRING_AUTH=False`). Comienza con `SECURE_HSTS_SECONDS=0`; aumenta gradualmente sólo después de verificar HTTPS y todos los subdominios.
+El bucket permanece privado. En Pilot Django genera URLs firmadas temporales; cuando se habilite el módulo CloudFront+OAC, configure el dominio de media sin volver público S3. Comienza con `SECURE_HSTS_SECONDS=0`; aumenta gradualmente sólo después de verificar HTTPS y todos los subdominios.

@@ -86,6 +86,7 @@ class Command(BaseCommand):
             link, _ = DevelopmentModel.all_objects.get_or_create(development=developments[dev_key], housing_model=models[model_key], defaults={"is_active": True})
             reference = f"seed:{slugify(development_name)}:{slugify(model_name)}:{slugify(variant or 'base')}"
             offering, was_created = PropertyOffering.all_objects.get_or_create(internal_reference=reference, defaults={
+                "promotion_authorized": True, "information_verified_at": observed,
                 "source_type": "DEVELOPER", "condition": "NEW", "development_model": link, "variant_name": variant,
                 "property_type": apartment if type_code == "apartment" else house,
                 "bedrooms_min": beds, "bathrooms_total": baths, "parking_min": parking,

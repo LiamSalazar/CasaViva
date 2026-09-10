@@ -72,7 +72,7 @@ def test_publish_validation_reports_missing_business_requirements(owner, propert
     listing = Listing.objects.create(offering=offering, title="", slug="incompleta")
     with pytest.raises(ValidationError) as error:
         validate_publishable(listing)
-    assert set(error.value.detail) == {"title", "location", "price"}
+    assert set(error.value.detail) == {"title", "location", "price", "promotion_authorized", "information_verified_at"}
 
     offering.archived_at = timezone.now()
     offering.save(update_fields=["archived_at", "updated_at"])

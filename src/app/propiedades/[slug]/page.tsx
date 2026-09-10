@@ -12,6 +12,7 @@ export async function generateMetadata({
     title: p ? `${p.title}${p.municipality ? ` en ${p.municipality}` : ""}` : "Propiedad",
     description: p?.shortDescription || undefined,
     openGraph: p?.heroImage ? { images: [p.heroImage] } : undefined,
+    alternates: { canonical: `/propiedades/${slug}` },
   };
 }
 export default async function Page({

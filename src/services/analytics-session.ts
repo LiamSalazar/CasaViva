@@ -1,4 +1,5 @@
-export const ANALYTICS_VISITOR_KEY = "casaviva-visitor-id";
+export const LEGACY_ANALYTICS_VISITOR_KEY = "casaviva-visitor-id";
+export const ANALYTICS_VISITOR_KEY = "casaviva-session-visitor-id";
 export const ANALYTICS_SESSION_KEY = "casaviva-session-id";
 export const ANALYTICS_LAST_ACTIVITY_KEY = "casaviva-session-last-activity";
 export const ANALYTICS_ATTRIBUTION_KEY = "casaviva-session-attribution";
@@ -33,13 +34,14 @@ export function getAnalyticsIdentity(): AnalyticsIdentity {
     sessionStorage.removeItem(ANALYTICS_ATTRIBUTION_KEY);
   }
   return {
-    visitorId: localStorage.getItem(ANALYTICS_VISITOR_KEY) || undefined,
+    visitorId: sessionStorage.getItem(ANALYTICS_VISITOR_KEY) || undefined,
     sessionId: sessionStorage.getItem(ANALYTICS_SESSION_KEY) || undefined,
   };
 }
 
 export function storeAnalyticsIdentity(visitorId: string, sessionId: string, attribution: AcquisitionAttribution = {}) {
-  localStorage.setItem(ANALYTICS_VISITOR_KEY, visitorId);
+  localStorage.removeItem(LEGACY_ANALYTICS_VISITOR_KEY);
+  sessionStorage.setItem(ANALYTICS_VISITOR_KEY, visitorId);
   sessionStorage.setItem(ANALYTICS_SESSION_KEY, sessionId);
   sessionStorage.setItem(ANALYTICS_LAST_ACTIVITY_KEY, String(Date.now()));
   sessionStorage.setItem(ANALYTICS_ATTRIBUTION_KEY, JSON.stringify(attribution));

@@ -25,6 +25,10 @@ class PriceRecord(UUIDTimeStampedModel):
     effective_to = models.DateTimeField(null=True, blank=True)
     source_record = models.ForeignKey(SourceRecord, null=True, blank=True, on_delete=models.SET_NULL)
     observations = models.TextField(null=True, blank=True)
+    promotion_text = models.TextField(null=True, blank=True)
+    promotion_valid_from = models.DateTimeField(null=True, blank=True)
+    promotion_valid_until = models.DateTimeField(null=True, blank=True)
+    promotion_conditions = models.TextField(null=True, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
 
     class Meta:

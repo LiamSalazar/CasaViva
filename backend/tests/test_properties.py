@@ -16,6 +16,8 @@ def aggregate_payload(catalog, **overrides):
     payload = {
         "offering": {
             "source_type": "PRIVATE",
+            "promotion_authorized": True,
+            "information_verified_at": timezone.now().isoformat(),
             "condition": "NEW",
             "development_model": None,
             "property_type": str(catalog["offering"].property_type_id),

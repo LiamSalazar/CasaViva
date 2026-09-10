@@ -31,12 +31,10 @@ def start_session(request):
     serializer.is_valid(raise_exception=True)
     data = serializer.validated_data
     now = timezone.now()
-    visitor_id = data.pop("visitor_id", None)
-    visitor = AnonymousVisitor.objects.filter(pk=visitor_id).first() if visitor_id else None
-    if visitor:
-        visitor.last_seen_at = now; visitor.save(update_fields=["last_seen_at", "updated_at"])
-    else:
-        visitor = AnonymousVisitor.objects.create(first_seen_at=now, last_seen_at=now)
+    # A visitor is deliberately scoped to this session. Incoming legacy IDs are
+    # ignored to prevent cross-session linkage without a future explicit consent.
+    data.pop("visitor_id", None)
+    visitor = AnonymousVisitor.objects.create(first_seen_at=now, last_seen_at=now)
     session = WebSession.objects.create(visitor=visitor, started_at=now, last_seen_at=now, **data)
     return Response({"visitor_id": visitor.id, "session_id": session.id}, status=201)
 

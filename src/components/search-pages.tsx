@@ -30,6 +30,7 @@ import {
 import {
   formatArea,
   formatCurrency,
+  formatDate,
   propertyTypeLabel,
   slugify,
   uid,
@@ -619,6 +620,13 @@ export function PropertyDetailPage({
                 >
                   {expanded ? "Mostrar menos" : "Leer todo"}
                 </button>
+              </section>
+              <section className="commercial-disclosure" aria-label="Información comercial">
+                <h2>Quién promociona esta propiedad</h2>
+                <p><strong>Proveedor:</strong> {property.providerLabel || (property.sourceType === "PRIVATE" ? "Propietario particular" : property.developerName)}</p>
+                <p><strong>Promoción:</strong> {property.promotionRole || "CasaViva, promotor externo"}</p>
+                {property.informationVerifiedAt && <p><strong>Información verificada:</strong> {formatDate(property.informationVerifiedAt)}</p>}
+                <p>CasaViva actúa como promotor externo de este inmueble. La operación de compraventa, sus condiciones definitivas y la documentación correspondiente se formalizan directamente con {property.providerLabel && property.sourceType === "DEVELOPER" ? property.providerLabel : "el proveedor o propietario de la vivienda"}. La información publicada se basa en datos proporcionados o autorizados por dicho proveedor y está sujeta a actualización de precio y disponibilidad.</p>
               </section>
               <section>
                 <h2>Nota personal</h2>

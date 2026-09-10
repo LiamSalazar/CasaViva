@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.db import transaction
-from .models import Guide, HomeContent, HomeHeroSlide, LocationContent, SiteSettings
+from .models import AboutContent, Guide, HomeContent, HomeHeroSlide, LocationContent, SiteSettings
 
 
 class HttpUrlField(serializers.URLField):
@@ -14,7 +14,11 @@ class HttpUrlField(serializers.URLField):
 class PublicSiteSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = SiteSettings
-        fields = ["contact_email", "facebook_url", "instagram_url", "tiktok_url"]
+        fields = ["brand_name", "responsible_name", "operator_type", "commercial_role", "commercial_role_display", "responsible_address", "privacy_email", "contact_email", "complaints_email", "contact_phone", "facebook_url", "instagram_url", "tiktok_url"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        return {key: value for key, value in data.items() if value and "PENDIENTE" not in str(value).upper()}
 
 
 class PublicGuideSerializer(serializers.ModelSerializer):
@@ -38,7 +42,7 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SiteSettings
-        fields = ["id", "key", "contact_email", "facebook_url", "instagram_url", "tiktok_url", "version"]
+        fields = ["id", "key", "brand_name", "responsible_name", "operator_type", "commercial_role", "commercial_role_display", "responsible_address", "privacy_email", "contact_email", "complaints_email", "contact_phone", "verification_warning_days", "facebook_url", "instagram_url", "tiktok_url", "version"]
         read_only_fields = ["id", "version"]
 
     def validate(self, attrs):
@@ -46,6 +50,25 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"key": "CasaViva utiliza una única configuración principal."})
         if self.instance is None and SiteSettings.all_objects.exists():
             raise serializers.ValidationError("La configuración principal ya existe; edítala en lugar de crear otra.")
+        return attrs
+
+
+class AboutContentSerializer(serializers.ModelSerializer):
+    hero_media_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AboutContent
+        fields = ["id", "key", "eyebrow", "hero_title", "hero_media", "hero_media_url", "main_title", "main_body", "what_we_do_title", "what_we_do_body", "how_we_work_title", "how_we_work_body", "vision_title", "vision_body", "cta_label", "cta_url", "version", "created_at", "updated_at"]
+        read_only_fields = ["id", "hero_media_url", "version", "created_at", "updated_at"]
+
+    def get_hero_media_url(self, obj):
+        return obj.hero_media.url if obj.hero_media_id else None
+
+    def validate(self, attrs):
+        if attrs.get("key", getattr(self.instance, "key", "main")) != "main":
+            raise serializers.ValidationError({"key": "CasaViva utiliza un único contenido de Nosotros."})
+        if self.instance is None and AboutContent.all_objects.exists():
+            raise serializers.ValidationError("El contenido de Nosotros ya existe; edítalo.")
         return attrs
 
 

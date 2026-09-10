@@ -117,13 +117,15 @@ if STORAGE_BACKEND == "s3":
         "default": {"BACKEND": "storages.backends.s3.S3Storage"},
         "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
     }
-    AWS_ACCESS_KEY_ID = os.environ.get("S3_ACCESS_KEY_ID")
-    AWS_SECRET_ACCESS_KEY = os.environ.get("S3_SECRET_ACCESS_KEY")
+    # Empty values let boto3 use the AWS credential provider chain (EC2 role).
+    AWS_ACCESS_KEY_ID = os.environ.get("S3_ACCESS_KEY_ID") or None
+    AWS_SECRET_ACCESS_KEY = os.environ.get("S3_SECRET_ACCESS_KEY") or None
     AWS_STORAGE_BUCKET_NAME = os.environ.get("S3_BUCKET_NAME")
     AWS_S3_ENDPOINT_URL = os.environ.get("S3_ENDPOINT_URL") or None
     AWS_S3_REGION_NAME = os.environ.get("S3_REGION") or None
     AWS_S3_CUSTOM_DOMAIN = os.environ.get("S3_CUSTOM_DOMAIN") or None
-    AWS_QUERYSTRING_AUTH = False
+    AWS_QUERYSTRING_AUTH = os.environ.get("S3_QUERYSTRING_AUTH", "true").lower() == "true"
+    AWS_QUERYSTRING_EXPIRE = int(os.environ.get("S3_QUERYSTRING_EXPIRE", "3600"))
     AWS_DEFAULT_ACL = None
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -159,6 +161,12 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 DATA_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
 MAX_IMAGE_BYTES = int(os.environ.get("MAX_IMAGE_BYTES", 10 * 1024 * 1024))
 ANTIBOT_ENABLED = os.environ.get("ANTIBOT_ENABLED", "false").lower() == "true"
+ANTIBOT_PROVIDER = os.environ.get("ANTIBOT_PROVIDER", "turnstile")
+TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY", "")
+LEAD_NOTIFICATION_BACKEND = os.environ.get("LEAD_NOTIFICATION_BACKEND", "django_email")
+LEAD_NOTIFICATION_EMAIL = os.environ.get("LEAD_NOTIFICATION_EMAIL", "")
+ANALYTICS_RETENTION_DAYS = int(os.environ["ANALYTICS_RETENTION_DAYS"]) if os.environ.get("ANALYTICS_RETENTION_DAYS") else None
+INACTIVE_LEAD_RETENTION_DAYS = int(os.environ["INACTIVE_LEAD_RETENTION_DAYS"]) if os.environ.get("INACTIVE_LEAD_RETENTION_DAYS") else None
 
 LOGGING = {
     "version": 1,

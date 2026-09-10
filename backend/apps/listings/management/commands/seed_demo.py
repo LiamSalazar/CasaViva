@@ -136,7 +136,7 @@ class Command(BaseCommand):
         property_type = PropertyType.objects.first()
         while PropertyOffering.all_objects.count() < 60:
             index = PropertyOffering.all_objects.count() + 1
-            offering = PropertyOffering.all_objects.create(source_type="PRIVATE", condition="USED" if index % 3 else "NEW", property_type=property_type, state=municipality.state, municipality=municipality, internal_reference=f"DEMO-PART-{index:03d}", bedrooms_min=2 + index % 3, bathrooms_total=1 + index % 2, construction_area_min=Decimal(60 + index), created_by=users[0], updated_by=users[0])
+            offering = PropertyOffering.all_objects.create(source_type="PRIVATE", condition="USED" if index % 3 else "NEW", property_type=property_type, state=municipality.state, municipality=municipality, internal_reference=f"DEMO-PART-{index:03d}", promotion_authorized=True, information_verified_at=timezone.now(), bedrooms_min=2 + index % 3, bathrooms_total=1 + index % 2, construction_area_min=Decimal(60 + index), created_by=users[0], updated_by=users[0])
             listing = Listing.all_objects.create(offering=offering, title=f"Propiedad demostración {index}", slug=f"propiedad-demostracion-{index}", short_description="Inventario simulado de CasaViva.", description="Propiedad sintética creada exclusivamente para el modo demostración.", is_published=index % 5 != 0, is_featured=index % 11 == 0, published_at=timezone.now() if index % 5 else None, created_by=users[0], updated_by=users[0])
             old = timezone.now() - timedelta(days=90)
             PriceRecord.objects.create(offering=offering, price_type="FIXED", amount_min=Decimal(900000 + index * 25000), currency="MXN", effective_from=old, effective_to=old + timedelta(days=55), created_by=users[0])
@@ -153,6 +153,7 @@ class Command(BaseCommand):
                 internal_reference=f"DEMO-DEV-{index + 1:02d}",
                 defaults={
                     "source_type": "DEVELOPER", "condition": "NEW", "development_model": model_link,
+                    "promotion_authorized": True, "information_verified_at": timezone.now(),
                     "property_type": property_type, "state": None, "municipality": None,
                     "latitude": development.latitude, "longitude": development.longitude,
                     "bedrooms_min": 2 + index % 3, "bathrooms_total": 2,

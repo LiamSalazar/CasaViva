@@ -1,0 +1,16 @@
+{
+  email {$ACME_EMAIL}
+}
+{$PUBLIC_DOMAIN} {
+  encode zstd gzip
+  header {
+    X-Content-Type-Options nosniff
+    Referrer-Policy strict-origin-when-cross-origin
+    Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    Content-Security-Policy "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    -Server
+  }
+  @api path /api/* /_technical-admin/* /static/*
+  reverse_proxy @api backend:8000
+  reverse_proxy frontend:3000
+}

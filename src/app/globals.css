@@ -2239,3 +2239,8 @@ h2 {
     justify-content: center;
   }
 }
+/* Preferencia first-party; permanece visible sin bloquear la navegación. */
+.analytics-notice { position: fixed; z-index: 1000; right: 1rem; bottom: 1rem; max-width: 34rem; padding: 1rem; background: #fff; color: #24231f; border: 1px solid #d8d3c8; box-shadow: 0 8px 30px #0002; }
+.analytics-notice p { margin: 0 0 .75rem; font-size: .9rem; }
+.analytics-notice div { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+.analytics-notice button, .analytics-notice a { border: 0; background: transparent; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; padding: .25rem; }

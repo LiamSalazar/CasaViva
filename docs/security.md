@@ -11,7 +11,9 @@
 - Uploads por límite, magic bytes/MIME y reprocesamiento con Pillow.
 - Serializers públicos dedicados nunca devuelven comisión, notas, referencia interna, actores, permisos o clientes.
 
-`ANTIBOT_ENABLED` deja el punto de integración para Turnstile. Producción debe sumar rate limiting perimetral.
+`ANTIBOT_ENABLED` activa validación server-side provider-agnostic; la implementación inicial usa Turnstile y falla cerrada ante token o configuración inválidos. Sólo el token e IP de conexión opcional se envían al endpoint fijo del proveedor. Producción suma rate limiting perimetral.
+
+Caddy centraliza redirect HTTPS, nosniff, Referrer-Policy, CSP con `frame-ancestors`, Permissions-Policy y eliminación del header Server. HSTS sigue el incremento progresivo existente y no activa preload.
 
 ## MFA y sesiones sensibles
 
@@ -36,4 +38,4 @@ El hardening se ejecuta obligatoriamente después de cada `migrate` y antes de s
 
 Los formularios públicos exigen consentimiento explícito y conservan versión del aviso, propósito, sesión y visitante. Una solicitud de visita crea una Inquiry, no una Visit. Los gastos de marketing se anulan con motivo, actor, MFA reciente y auditoría, y no se eliminan por CRUD. La actualización de usuarios usa un serializer cerrado, validadores de contraseña y email normalizado/único; `is_superuser` nunca es un campo editable.
 
-Producción admite storage S3-compatible y PostgreSQL con SSL por variables de entorno. Faltantes críticos detienen el arranque. Los hosts de media de Next se declaran durante el build y los `MediaAsset` públicos se sirven mediante un bucket/CDN público controlado; no se incorporan credenciales al frontend. HSTS inicia desactivado y aumenta gradualmente tras validar HTTPS. CORS no se abre globalmente; se prefiere same-origin y CSRF permanece activo.
+Producción admite storage S3-compatible y PostgreSQL con SSL por variables de entorno. Faltantes críticos detienen el arranque. Los hosts de media de Next se declaran durante el build y los `MediaAsset` se sirven con URL firmada o CloudFront+OAC; S3 permanece privado y no se incorporan credenciales al frontend. HSTS inicia desactivado y aumenta gradualmente tras validar HTTPS. CORS no se abre globalmente; se prefiere same-origin y CSRF permanece activo.

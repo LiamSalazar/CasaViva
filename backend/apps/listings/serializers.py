@@ -33,6 +33,10 @@ class PriceRecordSerializer(serializers.ModelSerializer):
             errors["amount_max"] = "Captura el precio máximo."
         if amount_min is not None and amount_max is not None and amount_max < amount_min:
             errors["amount_max"] = "El precio máximo no puede ser menor que el mínimo."
+        valid_from = attrs.get("promotion_valid_from", getattr(self.instance, "promotion_valid_from", None))
+        valid_until = attrs.get("promotion_valid_until", getattr(self.instance, "promotion_valid_until", None))
+        if valid_from and valid_until and valid_until <= valid_from:
+            errors["promotion_valid_until"] = "La vigencia final debe ser posterior a la inicial."
         if errors:
             raise serializers.ValidationError(errors)
         return attrs
@@ -115,10 +119,14 @@ class PublicListingSerializer(serializers.ModelSerializer):
     shortDescription = serializers.CharField(source="short_description")
     createdAt = serializers.DateTimeField(source="created_at")
     updatedAt = serializers.DateTimeField(source="updated_at")
+    providerLabel = serializers.SerializerMethodField()
+    promotionRole = serializers.SerializerMethodField()
+    informationVerifiedAt = serializers.DateTimeField(source="offering.information_verified_at", allow_null=True)
+    promotion = serializers.SerializerMethodField()
 
     class Meta:
         model = Listing
-        fields = ["id", "slug", "title", "propertyType", "propertyTypeName", "sourceType", "condition", "status", "published", "featured", "price", "priceMax", "currency", "priceLabel", "state", "municipality", "neighborhood", "latitude", "longitude", "bedrooms", "bathrooms", "fullBathrooms", "halfBathrooms", "parkingSpaces", "constructionM2", "constructionAreaBasis", "landM2", "landAreaBasis", "gardenM2", "shortDescription", "description", "amenities", "amenitySlugs", "developerId", "developerName", "developmentId", "developmentName", "modelName", "heroImage", "gallery", "floorplans", "createdAt", "updatedAt"]
+        fields = ["id", "slug", "title", "propertyType", "propertyTypeName", "sourceType", "condition", "status", "published", "featured", "price", "priceMax", "currency", "priceLabel", "state", "municipality", "neighborhood", "latitude", "longitude", "bedrooms", "bathrooms", "fullBathrooms", "halfBathrooms", "parkingSpaces", "constructionM2", "constructionAreaBasis", "landM2", "landAreaBasis", "gardenM2", "shortDescription", "description", "amenities", "amenitySlugs", "developerId", "developerName", "developmentId", "developmentName", "modelName", "heroImage", "gallery", "floorplans", "providerLabel", "promotionRole", "informationVerifiedAt", "promotion", "createdAt", "updatedAt"]
 
     def current_price(self, obj):
         cached = getattr(obj.offering, "prices_cache", None)
@@ -171,6 +179,17 @@ class PublicListingSerializer(serializers.ModelSerializer):
         cached = getattr(obj.offering, "availability_cache", None)
         current = cached[0] if cached else (obj.offering.availability_history.filter(effective_to__isnull=True).first() if cached is None else None)
         return current.status.lower() if current else None
+    def get_providerLabel(self, obj):
+        if obj.offering.public_provider_label:
+            return obj.offering.public_provider_label
+        link = obj.offering.development_model
+        return link.development.developer.name if link else "Propietario particular"
+    def get_promotionRole(self, obj): return "CasaViva, promotor externo"
+    def get_promotion(self, obj):
+        p = self.current_price(obj)
+        if not p or not p.promotion_text:
+            return None
+        return {"text": p.promotion_text, "validFrom": p.promotion_valid_from, "validUntil": p.promotion_valid_until, "conditions": p.promotion_conditions}
 
 
 class AdminListingSerializer(serializers.ModelSerializer):

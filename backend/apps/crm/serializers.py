@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Inquiry, Lead, PrivacyNoticeVersion, Sale, Visit
+from .models import Inquiry, Lead, PrivacyNoticeVersion, TermsOfUseVersion, Sale, Visit
 from .services import create_inquiry
 from apps.listings.models import Listing
 
@@ -16,17 +16,25 @@ class PublicInquirySerializer(serializers.Serializer):
     session_id = serializers.UUIDField(required=False, allow_null=True)
     visitor_id = serializers.UUIDField(required=False, allow_null=True)
     privacy_consent = serializers.BooleanField()
-    privacy_notice_version = serializers.PrimaryKeyRelatedField(queryset=PrivacyNoticeVersion.objects.filter(is_active=True), required=False)
+    transfer_consent = serializers.BooleanField(required=False, default=False)
+    antibot_token = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    privacy_notice_version = serializers.PrimaryKeyRelatedField(
+        queryset=PrivacyNoticeVersion.objects.filter(is_active=True, status=PrivacyNoticeVersion.Status.PUBLISHED), required=False
+    )
 
     def validate(self, attrs):
         if not attrs.get("email") and not attrs.get("phone"):
             raise serializers.ValidationError("Captura correo o teléfono.")
         if not attrs["privacy_consent"]:
             raise serializers.ValidationError({"privacy_consent": "Debes aceptar el aviso de privacidad."})
-        notice = attrs.get("privacy_notice_version") or PrivacyNoticeVersion.objects.filter(is_active=True).order_by("-published_at").first()
+        notice = attrs.get("privacy_notice_version") or PrivacyNoticeVersion.objects.filter(
+            is_active=True, status=PrivacyNoticeVersion.Status.PUBLISHED
+        ).order_by("-published_at").first()
         if not notice:
             raise serializers.ValidationError({"privacy_consent": "El aviso de privacidad no está disponible temporalmente."})
         attrs["privacy_notice_version"] = notice
+        if attrs.get("listing_slug") and not attrs.get("transfer_consent"):
+            raise serializers.ValidationError({"transfer_consent": "Autoriza la canalización para consultar esta propiedad."})
         if attrs.get("session_id") and not attrs.get("visitor_id"):
             raise serializers.ValidationError({"visitor_id": "Incluye el visitante asociado a la sesión."})
         if attrs.get("visitor_id") and not attrs.get("session_id"):
@@ -38,12 +46,34 @@ class PublicInquirySerializer(serializers.Serializer):
         return attrs
 
     def create(self, data):
+        data.pop("antibot_token", None)
         slug = data.pop("listing_slug", None)
         data.pop("privacy_consent", None)
         listing = Listing.objects.filter(slug=slug, is_published=True).first() if slug else None
         if slug and listing is None:
             raise serializers.ValidationError({"listing_slug": "La propiedad indicada no está disponible."})
         return create_inquiry(listing=listing, **data)
+
+
+class LegalDocumentSerializer(serializers.ModelSerializer):
+    class Meta:
+        fields = ["id", "version", "title", "body", "effective_at", "published_at", "published_by", "status", "content_hash", "is_active", "historical_content_available", "created_at", "updated_at"]
+        read_only_fields = ["id", "published_at", "published_by", "status", "content_hash", "is_active", "created_at", "updated_at"]
+
+    def update(self, instance, validated_data):
+        if instance.status != instance.Status.DRAFT:
+            raise serializers.ValidationError("Las versiones publicadas o retiradas son inmutables.")
+        return super().update(instance, validated_data)
+
+
+class PrivacyNoticeVersionSerializer(LegalDocumentSerializer):
+    class Meta(LegalDocumentSerializer.Meta):
+        model = PrivacyNoticeVersion
+
+
+class TermsOfUseVersionSerializer(LegalDocumentSerializer):
+    class Meta(LegalDocumentSerializer.Meta):
+        model = TermsOfUseVersion
 
 
 class LeadSerializer(serializers.ModelSerializer):

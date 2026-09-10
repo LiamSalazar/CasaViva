@@ -148,6 +148,10 @@ class PropertyOffering(BusinessModel):
         USED = "USED", "Usada"
 
     source_type = models.CharField(max_length=20, choices=SourceType.choices)
+    promotion_authorized = models.BooleanField(default=False)
+    information_verified_at = models.DateTimeField(null=True, blank=True)
+    internal_source_reference = models.TextField(null=True, blank=True)
+    public_provider_label = models.CharField(max_length=200, null=True, blank=True)
     condition = models.CharField(max_length=10, choices=Condition.choices, null=True, blank=True)
     development_model = models.ForeignKey(DevelopmentModel, null=True, blank=True, on_delete=models.PROTECT, related_name="offerings")
     variant_name = models.CharField(max_length=180, null=True, blank=True)

@@ -18,13 +18,43 @@ class HomeContent(BusinessModel):
 
 class SiteSettings(BusinessModel):
     key = models.CharField(max_length=40, unique=True, default="main")
-    contact_email = models.EmailField()
+    brand_name = models.CharField(max_length=120, default="CasaViva")
+    responsible_name = models.CharField(max_length=200, default="José Alfredo Salazar Hernández")
+    operator_type = models.CharField(max_length=30, default="PERSONA_FISICA")
+    commercial_role = models.CharField(max_length=30, default="EXTERNAL_PROMOTER")
+    commercial_role_display = models.CharField(max_length=120, default="Promotor externo")
+    responsible_address = models.TextField(blank=True)
+    privacy_email = models.EmailField(blank=True)
+    contact_email = models.EmailField(blank=True)
+    complaints_email = models.EmailField(blank=True)
+    contact_phone = models.CharField(max_length=40, blank=True)
+    verification_warning_days = models.PositiveIntegerField(null=True, blank=True)
     facebook_url = models.URLField(null=True, blank=True)
     instagram_url = models.URLField(null=True, blank=True)
     tiktok_url = models.URLField(null=True, blank=True)
 
     def __str__(self):
         return "Información de contacto de CasaViva"
+
+
+class AboutContent(BusinessModel):
+    key = models.CharField(max_length=40, unique=True, default="main")
+    eyebrow = models.CharField(max_length=120, blank=True)
+    hero_title = models.CharField(max_length=240)
+    hero_media = models.ForeignKey(MediaAsset, null=True, blank=True, on_delete=models.SET_NULL, related_name="about_heroes")
+    main_title = models.CharField(max_length=240)
+    main_body = models.TextField()
+    what_we_do_title = models.CharField(max_length=240)
+    what_we_do_body = models.TextField()
+    how_we_work_title = models.CharField(max_length=240)
+    how_we_work_body = models.TextField()
+    vision_title = models.CharField(max_length=240)
+    vision_body = models.TextField()
+    cta_label = models.CharField(max_length=120, blank=True)
+    cta_url = models.CharField(max_length=500, blank=True)
+
+    def __str__(self):
+        return "Contenido de Nosotros"
 
 
 class HomeHeroSlide(BusinessModel):

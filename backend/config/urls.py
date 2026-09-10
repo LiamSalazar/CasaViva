@@ -14,7 +14,7 @@ from apps.analytics import views as analytics_views
 from apps.audit.views import AuditViewSet
 from apps.catalog import views as catalog_views
 from apps.catalog.models import Amenity, Development, PropertyType
-from apps.content.views import GuideViewSet, HomeContentViewSet, LocationContentViewSet, PublicGuideViewSet, PublicSiteSettingsViewSet, SiteSettingsViewSet
+from apps.content.views import AboutContentViewSet, GuideViewSet, HomeContentViewSet, LocationContentViewSet, PublicAboutContentViewSet, PublicGuideViewSet, PublicSiteSettingsViewSet, SiteSettingsViewSet
 from apps.crm import views as crm_views
 from apps.geo.models import State, Municipality, Locality, Neighborhood
 from apps.geo import views as geo_views
@@ -106,6 +106,9 @@ public_router = DefaultRouter()
 public_router.register("listings", listing_views.PublicListingViewSet, basename="public-listing")
 public_router.register("guides", PublicGuideViewSet, basename="public-guide")
 public_router.register("site-settings", PublicSiteSettingsViewSet, basename="public-site-settings")
+public_router.register("about", PublicAboutContentViewSet, basename="public-about")
+public_router.register("privacy-notice", crm_views.PublicPrivacyNoticeViewSet, basename="public-privacy-notice")
+public_router.register("terms-of-use", crm_views.PublicTermsOfUseViewSet, basename="public-terms-of-use")
 
 admin_router = DefaultRouter()
 admin_router.register("developers", catalog_views.DeveloperViewSet)
@@ -129,6 +132,9 @@ admin_router.register("sales", crm_views.SaleViewSet)
 admin_router.register("guides", GuideViewSet)
 admin_router.register("content", HomeContentViewSet)
 admin_router.register("site-settings", SiteSettingsViewSet)
+admin_router.register("about", AboutContentViewSet)
+admin_router.register("privacy-notices", crm_views.PrivacyNoticeAdminViewSet, basename="admin-privacy-notice")
+admin_router.register("terms-of-use", crm_views.TermsOfUseAdminViewSet, basename="admin-terms-of-use")
 admin_router.register("location-content", LocationContentViewSet)
 admin_router.register("audit", AuditViewSet)
 admin_router.register("users", account_views.UserViewSet)

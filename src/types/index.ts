@@ -67,10 +67,17 @@ export interface Property {
   neighborhoodId?: string;
   postalCode?: string;
   sourceType?: "DEVELOPER" | "PRIVATE";
+  promotionAuthorized?: boolean;
+  informationVerifiedAt?: string;
+  publicProviderLabel?: string;
+  internalSourceReference?: string;
   developerName?: string;
   developmentName?: string;
   developmentModelId?: string;
   modelName?: string;
+  providerLabel?: string;
+  promotionRole?: string;
+  promotion?: { text: string; validFrom?: string; validUntil?: string; conditions?: string };
   constructionAreaBasis?: "EXACT" | "UP_TO" | "FROM" | "RANGE" | "UNKNOWN";
   landAreaBasis?: "EXACT" | "UP_TO" | "FROM" | "RANGE" | "UNKNOWN";
   gardenAreaBasis?: "EXACT" | "UP_TO" | "FROM" | "RANGE" | "UNKNOWN";
@@ -92,6 +99,13 @@ export interface SiteSettings {
   id?: string;
   key?: string;
   contact_email: string;
+  brand_name?: string;
+  responsible_name?: string;
+  responsible_address?: string;
+  privacy_email?: string;
+  complaints_email?: string;
+  contact_phone?: string;
+  commercial_role_display?: string;
   facebook_url?: string | null;
   instagram_url?: string | null;
   tiktok_url?: string | null;
@@ -186,6 +200,7 @@ export interface Inquiry {
   visitorId?: string;
   subject?: string;
   privacyConsent: boolean;
+  transferConsent?: boolean;
   status: "new" | "viewed" | "attended";
 }
 

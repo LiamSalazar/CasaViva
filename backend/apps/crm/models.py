@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
+import hashlib
 from apps.common.models import BusinessModel, UUIDTimeStampedModel
 from apps.catalog.models import PropertyOffering
 from apps.listings.models import Listing
@@ -135,11 +136,52 @@ class Sale(UUIDTimeStampedModel):
         permissions = [("manage_sales", "Puede administrar ventas")]
 
 
-class PrivacyNoticeVersion(UUIDTimeStampedModel):
+class LegalDocumentVersionBase(UUIDTimeStampedModel):
+    class Status(models.TextChoices):
+        DRAFT = "DRAFT", "Borrador"
+        PUBLISHED = "PUBLISHED", "Publicada"
+        RETIRED = "RETIRED", "Retirada"
+
     version = models.CharField(max_length=30, unique=True)
-    published_at = models.DateTimeField()
-    content_hash = models.CharField(max_length=64)
+    title = models.CharField(max_length=250, blank=True)
+    body = models.TextField(blank=True)
+    effective_at = models.DateTimeField(null=True, blank=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+    published_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.DRAFT, db_index=True)
+    content_hash = models.CharField(max_length=64, blank=True)
     is_active = models.BooleanField(default=False)
+    historical_content_available = models.BooleanField(default=True)
+
+    class Meta:
+        abstract = True
+
+    @staticmethod
+    def normalize_content(value):
+        return "\n".join(line.rstrip() for line in (value or "").replace("\r\n", "\n").replace("\r", "\n").strip().split("\n"))
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).first()
+            if previous and previous.status in (self.Status.PUBLISHED, self.Status.RETIRED):
+                protected = ("version", "title", "body", "effective_at", "published_at", "published_by_id", "content_hash")
+                if any(getattr(previous, name) != getattr(self, name) for name in protected):
+                    raise ValueError("Una versión legal publicada es inmutable.")
+        if self.body:
+            self.content_hash = hashlib.sha256(self.normalize_content(self.body).encode("utf-8")).hexdigest()
+        super().save(*args, **kwargs)
+
+
+class PrivacyNoticeVersion(LegalDocumentVersionBase):
+    class Meta:
+        permissions = [("publish_privacy_notice", "Puede publicar avisos de privacidad")]
+        constraints = [models.UniqueConstraint(fields=["is_active"], condition=Q(is_active=True), name="one_active_privacy_notice")]
+
+
+class TermsOfUseVersion(LegalDocumentVersionBase):
+    class Meta:
+        permissions = [("publish_terms_of_use", "Puede publicar términos de uso")]
+        constraints = [models.UniqueConstraint(fields=["is_active"], condition=Q(is_active=True), name="one_active_terms_of_use")]
 
 
 class ConsentRecord(UUIDTimeStampedModel):

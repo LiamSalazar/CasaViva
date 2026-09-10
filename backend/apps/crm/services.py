@@ -20,7 +20,7 @@ def normalize_phone(value):
 def create_inquiry(*, first_name, last_name=None, email=None, phone=None, message=None,
                    listing=None, session_id=None, visitor_id=None, source="WEB",
                    privacy_notice_version=None, intent=Inquiry.Intent.INFORMATION,
-                   subject=None):
+                   subject=None, transfer_consent=False):
     email = email.lower().strip() if email else None
     normalized = normalize_phone(phone)
     lead = Lead.all_objects.filter(email=email, archived_at__isnull=True).first() if email else None
@@ -54,30 +54,7 @@ def create_inquiry(*, first_name, last_name=None, email=None, phone=None, messag
             web_session.lead = lead
             web_session.save(update_fields=["lead", "updated_at"])
         AnalyticsEvent.objects.filter(session=web_session, lead__isnull=True).update(lead=lead)
-        visitor_has_conflicting_lead = WebSession.objects.filter(
-            visitor_id=web_session.visitor_id, lead__isnull=False,
-        ).exclude(lead=lead).exists()
-        prior_session_ids = []
-        if not visitor_has_conflicting_lead:
-            candidate_ids = list(
-                WebSession.objects.select_for_update().filter(
-                    visitor_id=web_session.visitor_id,
-                    lead__isnull=True,
-                    started_at__lte=web_session.started_at,
-                ).values_list("id", flat=True),
-            )
-            conflicting_ids = set(
-                AnalyticsEvent.objects.filter(
-                    session_id__in=candidate_ids, lead__isnull=False,
-                ).values_list("session_id", flat=True),
-            )
-            prior_session_ids = [item for item in candidate_ids if item not in conflicting_ids]
-        if prior_session_ids:
-            WebSession.objects.filter(id__in=prior_session_ids).update(lead=lead)
-            AnalyticsEvent.objects.filter(
-                session_id__in=prior_session_ids,
-                lead__isnull=True,
-            ).update(lead=lead)
+        # Session-only analytics links only the session submitted with this form.
         first_session = first_touch_session(lead) or web_session
         attribution_source = first_session.utm_source or source
         if lead.first_source in (None, "", source):
@@ -89,16 +66,17 @@ def create_inquiry(*, first_name, last_name=None, email=None, phone=None, messag
         subject=subject, message=message, session_id=web_session.id if web_session else None,
     )
     if privacy_notice_version:
-        purpose = {
-            Inquiry.Intent.INFORMATION: "PROPERTY_INQUIRY",
-            Inquiry.Intent.VISIT_REQUEST: "VISIT_REQUEST",
-            Inquiry.Intent.GENERAL_CONTACT: "GENERAL_CONTACT",
-        }[intent]
         ConsentRecord.objects.create(
             lead=lead, visitor_id=web_session.visitor_id if web_session else None,
-            privacy_notice_version=privacy_notice_version, purpose=purpose,
+            privacy_notice_version=privacy_notice_version, purpose="PRIVACY_NOTICE_ACKNOWLEDGEMENT",
             granted=True, granted_at=timezone.now(), source="PUBLIC_WEB",
         )
+        if listing and transfer_consent:
+            ConsentRecord.objects.create(
+                lead=lead, visitor_id=web_session.visitor_id if web_session else None,
+                privacy_notice_version=privacy_notice_version, purpose="LEAD_TRANSFER",
+                granted=True, granted_at=timezone.now(), source="PUBLIC_WEB",
+            )
     if listing:
         LeadInterest.objects.create(lead=lead, offering=listing.offering, interest_type=LeadInterest.Type.INQUIRED)
     return inquiry

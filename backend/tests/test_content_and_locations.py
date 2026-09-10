@@ -78,6 +78,7 @@ def test_site_settings_seed_is_idempotent_editable_and_public_contract_is_minima
     public = admin_client.get("/api/v1/public/site-settings/")
     assert public.status_code == 200
     assert set(public.data["results"][0]) == {
+        "brand_name", "responsible_name", "operator_type", "commercial_role", "commercial_role_display",
         "contact_email", "facebook_url", "instagram_url", "tiktok_url",
     }
 

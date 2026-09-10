@@ -18,7 +18,7 @@ def test_public_listing_visibility_and_no_internal_leak(client, catalog):
         "constructionAreaBasis", "landM2", "landAreaBasis", "gardenM2", "shortDescription",
         "description", "amenities", "amenitySlugs", "developerId", "developerName",
         "developmentId", "developmentName", "modelName", "heroImage", "gallery", "floorplans",
-        "createdAt", "updatedAt",
+        "providerLabel", "promotionRole", "informationVerifiedAt", "promotion", "createdAt", "updatedAt",
     }
 
     listing = catalog["listing"]
@@ -45,7 +45,7 @@ def test_public_development_without_media_keeps_gallery_empty(client, catalog):
 @pytest.mark.django_db
 def test_public_inquiry_deduplicates_exact_email(client, catalog):
     call_command("seed_system")
-    payload = {"first_name": "Persona", "email": "PERSONA@example.test", "message": "Información", "listing_slug": "casa-modelo", "privacy_consent": True}
+    payload = {"first_name": "Persona", "email": "PERSONA@example.test", "message": "Información", "listing_slug": "casa-modelo", "privacy_consent": True, "transfer_consent": True}
     assert client.post("/api/v1/public/inquiries/", payload, content_type="application/json").status_code == 201
     assert client.post("/api/v1/public/inquiries/", payload, content_type="application/json").status_code == 201
     from apps.crm.models import Lead, Inquiry

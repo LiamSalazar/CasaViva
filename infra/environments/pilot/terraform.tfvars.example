@@ -1,0 +1,4 @@
+ami_id            = "ami-REPLACE_WITH_ARM64_AL2023_IN_MX_CENTRAL_1"
+availability_zones = ["mx-central-1a", "mx-central-1b"]
+alert_emails       = ["REPLACE@example.com"]
+bucket_namespace   = "REPLACE-globally-unique-casaviva-pilot"

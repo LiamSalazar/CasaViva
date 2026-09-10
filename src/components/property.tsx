@@ -400,10 +400,12 @@ const inquirySchema = z.object({
   phone: z.string().min(8, "Teléfono inválido"),
   message: z.string().min(10, "Cuéntanos un poco más"),
   privacy: z.boolean().refine(Boolean, "Debes aceptar el aviso"),
+  transfer: z.boolean().refine(Boolean, "Debes autorizar la canalización para esta propiedad"),
 });
 type InquiryForm = z.infer<typeof inquirySchema>;
 export function PropertyContactCard({ property }: { property: Property }) {
   const { toast } = useToast();
+  const { siteSettings } = useCasaViva();
   const [sent, setSent] = useState(false);
   const {
     register,
@@ -415,6 +417,7 @@ export function PropertyContactCard({ property }: { property: Property }) {
     defaultValues: {
       message: `Me interesa ${property.title}. Quisiera recibir más información.`,
       privacy: false,
+      transfer: false,
     },
   });
   const submit = async (
@@ -435,6 +438,7 @@ export function PropertyContactCard({ property }: { property: Property }) {
       sessionId: analyticsIdentity.sessionId,
       visitorId: analyticsIdentity.visitorId,
       privacyConsent: data.privacy,
+      transferConsent: data.transfer,
       status: "new",
     };
     try {
@@ -488,9 +492,15 @@ export function PropertyContactCard({ property }: { property: Property }) {
         </label>
         <label className="privacy-check">
           <input type="checkbox" {...register("privacy")} />
-          <span>He leído y acepto el Aviso de Privacidad.</span>
+          <span>He leído el <Link href="/aviso-de-privacidad">Aviso de Privacidad</Link>.</span>
         </label>
         {errors.privacy && <small>{errors.privacy.message}</small>}
+        <label className="privacy-check">
+          <input type="checkbox" {...register("transfer")} />
+          <span>Autorizo que CasaViva comparta mis datos de contacto y la información necesaria de mi solicitud con el desarrollador, propietario o proveedor correspondiente al inmueble de mi interés, exclusivamente para que pueda atender y dar seguimiento a mi solicitud.</span>
+        </label>
+        {errors.transfer && <small>{errors.transfer.message}</small>}
+        {siteSettings?.responsible_address && siteSettings?.privacy_email && <p className="form-privacy-notice">José Alfredo Salazar Hernández, responsable del sitio CasaViva, con domicilio en {siteSettings.responsible_address}, tratará los datos que proporciones para atender tu solicitud, dar seguimiento a tu interés inmobiliario, coordinar visitas cuando corresponda y medir internamente la atención brindada. Cuando sea necesario para atender una propiedad concreta, tus datos podrán ser canalizados al desarrollador, propietario o proveedor correspondiente. Puedes limitar el uso de tus datos y ejercer tus derechos ARCO escribiendo a {siteSettings.privacy_email}. Consulta el <Link href="/aviso-de-privacidad">Aviso de Privacidad Integral</Link>.</p>}
         <button disabled={isSubmitting} className="button" type="submit">
           Solicitar información
         </button>

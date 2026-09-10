@@ -55,7 +55,7 @@ export POSTGRES_TEST_PASSWORD=casaviva-migrator-test
 
 cd "$repository_dir/backend"
 DJANGO_SETTINGS_MODULE=config.settings.test "$backend_pytest" \
-  --cov=apps --cov-branch --cov-fail-under=85 \
+  --cov=apps --cov-branch --cov-config=.coveragerc --cov-fail-under=85 \
   --cov-report=term --cov-report=json:coverage.json
 
 export POSTGRES_TEST_USER=postgres

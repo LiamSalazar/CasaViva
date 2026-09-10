@@ -1,0 +1,36 @@
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    env_file: .env.production
+    volumes: ["./docker/Caddyfile:/etc/caddy/Caddyfile:ro", "caddy_data:/data", "caddy_config:/config"]
+    depends_on: [frontend, backend]
+  frontend:
+    image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE}
+    restart: unless-stopped
+    expose: ["3000"]
+  backend:
+    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE}
+    restart: unless-stopped
+    env_file: .env.production
+    expose: ["8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    env_file: .env.production
+    volumes: ["/opt/casaviva/postgres:/var/lib/postgresql/data", "./docker/postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-casaviva-roles.sh:ro"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d casaviva"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  cloudwatch-agent:
+    image: amazon/cloudwatch-agent:latest
+    restart: unless-stopped
+    volumes: ["./docker/cloudwatch-agent.json:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json:ro", "/var/run/docker.sock:/var/run/docker.sock:ro", "/opt/casaviva:/opt/casaviva:ro"]
+volumes:
+  caddy_data:
+  caddy_config:

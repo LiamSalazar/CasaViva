@@ -47,7 +47,7 @@ def catalog(db, property_type):
     development = Development.objects.create(developer=developer, name="Desarrollo", slug="desarrollo", state=state, municipality=municipality)
     model = HousingModel.objects.create(developer=developer, name="Modelo", slug="modelo")
     link = DevelopmentModel.objects.create(development=development, housing_model=model)
-    offering = PropertyOffering.objects.create(source_type="DEVELOPER", development_model=link, property_type=property_type, bedrooms_min=3, bathrooms_total=2)
+    offering = PropertyOffering.objects.create(source_type="DEVELOPER", development_model=link, property_type=property_type, bedrooms_min=3, bathrooms_total=2, promotion_authorized=True, information_verified_at=timezone.now())
     PriceRecord.objects.create(offering=offering, price_type="FROM", amount_min=1_200_000, effective_from=timezone.now())
     AvailabilityRecord.objects.create(offering=offering, status="AVAILABLE", effective_from=timezone.now())
     listing = Listing.objects.create(offering=offering, title="Casa Modelo", slug="casa-modelo", short_description="Información clara", description="Descripción", is_published=True, published_at=timezone.now())

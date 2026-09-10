@@ -1,6 +1,6 @@
 # Eventos analíticos
 
-Todos usan `schema_version=1`, `occurred_at`, `visitor_id`, `session_id`, `page_path` opcional y `properties` validado con máximo de 16 KiB. El visitante persiste; la sesión rota después de 30 minutos de inactividad o si cambian `utm_source`, `utm_medium` o `utm_campaign`. `utm_content` no rota por sí solo. La solicitud en vuelo se comparte para evitar duplicados bajo React Strict Mode.
+Todos usan `schema_version=1`, `occurred_at`, `visitor_id`, `session_id`, `page_path` opcional y `properties` validado con máximo de 16 KiB. Visitante y sesión existen sólo en `sessionStorage`; el servidor ignora IDs legacy al crear otra sesión. La sesión rota después de 30 minutos o cambios materiales de UTM. La solicitud en vuelo se comparte para evitar duplicados bajo React Strict Mode.
 
 Al asociar una consulta, los eventos previos reciben el lead de forma idempotente y los posteriores lo heredan de `WebSession.lead`. BI usa first-touch: primera sesión conocida ordenada por inicio e identificador.
 

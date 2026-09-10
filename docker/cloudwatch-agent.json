@@ -1,0 +1,1 @@
+{"metrics":{"namespace":"CasaViva/Pilot","metrics_collected":{"disk":{"measurement":["used_percent"],"resources":["/","/opt/casaviva/postgres"]},"mem":{"measurement":["mem_used_percent"]}}}}

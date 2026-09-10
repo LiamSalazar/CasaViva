@@ -31,7 +31,7 @@ def _effective_datetime(value, field="effective_from"):
 
 
 @transaction.atomic
-def change_price(offering, actor, *, price_type, amount_min=None, amount_max=None, currency=PriceRecord.Currency.MXN, effective_from=None, source_record=None, observations=None, request=None):
+def change_price(offering, actor, *, price_type, amount_min=None, amount_max=None, currency=PriceRecord.Currency.MXN, effective_from=None, source_record=None, observations=None, promotion_text=None, promotion_valid_from=None, promotion_valid_until=None, promotion_conditions=None, request=None):
     if not actor.has_perm("catalog.manage_offerings"):
         raise PermissionDenied()
     locked = type(offering).all_objects.select_for_update().get(pk=offering.pk)
@@ -53,6 +53,10 @@ def change_price(offering, actor, *, price_type, amount_min=None, amount_max=Non
         raise ValidationError({"amount_max": "El precio no puede ser negativo."})
     if amount_min is not None and amount_max is not None and amount_max < amount_min:
         raise ValidationError({"amount_max": "El precio máximo no puede ser menor que el mínimo."})
+    if promotion_valid_from and promotion_valid_until and promotion_valid_until <= promotion_valid_from:
+        raise ValidationError({"promotion_valid_until": "La vigencia final debe ser posterior a la inicial."})
+    if promotion_text and (promotion_valid_from or promotion_valid_until) and not promotion_conditions:
+        raise ValidationError({"promotion_conditions": "Captura las condiciones aplicables de la promoción."})
     now = _effective_datetime(effective_from)
     current = PriceRecord.objects.select_for_update().filter(offering=locked, effective_to__isnull=True).first()
     if current:
@@ -60,7 +64,7 @@ def change_price(offering, actor, *, price_type, amount_min=None, amount_max=Non
             raise ValidationError({"effective_from": "La nueva fecha debe ser posterior al precio vigente."})
         current.effective_to = now
         current.save(update_fields=["effective_to", "updated_at"])
-    record = PriceRecord.objects.create(offering=locked, price_type=price_type, amount_min=amount_min, amount_max=amount_max, currency=currency, effective_from=now, source_record=source_record, observations=observations, created_by=actor)
+    record = PriceRecord.objects.create(offering=locked, price_type=price_type, amount_min=amount_min, amount_max=amount_max, currency=currency, effective_from=now, source_record=source_record, observations=observations, promotion_text=promotion_text, promotion_valid_from=promotion_valid_from, promotion_valid_until=promotion_valid_until, promotion_conditions=promotion_conditions, created_by=actor)
     audit_event(actor, "PRICE_CHANGE", locked, old_values={"price": str(current.amount_min) if current else None, "currency": current.currency if current else None}, new_values={"price": str(amount_min) if amount_min is not None else None, "type": price_type, "currency": currency}, request=request)
     return record
 
@@ -96,6 +100,14 @@ def validate_publishable(listing):
         errors["property_type"] = "El tipo de propiedad es obligatorio."
     if not location["state"] or not location["municipality"]:
         errors["location"] = "Selecciona estado y municipio."
+    if not offering.promotion_authorized:
+        errors["promotion_authorized"] = "Confirma que el proveedor autorizó la promoción antes de publicar."
+    if not offering.information_verified_at:
+        errors["information_verified_at"] = "Registra cuándo se verificó la información comercial."
+    if offering.source_type == offering.SourceType.DEVELOPER and not offering.development_model_id:
+        errors["provider"] = "Selecciona la desarrolladora/proveedor de la oferta."
+    if offering.source_type == offering.SourceType.PRIVATE and offering.development_model_id:
+        errors["provider"] = "Una oferta particular no puede atribuirse automáticamente a una desarrolladora."
     if not PriceRecord.objects.filter(offering=offering, effective_to__isnull=True).exists():
         errors["price"] = "Registra un precio o selecciona Precio a consultar."
     if errors:

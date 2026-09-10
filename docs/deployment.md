@@ -1,5 +1,7 @@
 # Despliegue
 
+Para AWS Pilot use el runbook específico. El deploy de main usa GitHub OIDC, ECR y SSM: migrator ejecuta `migrate`, `harden_database_roles` y `seed_system`; después se inicia la aplicación exclusivamente con `casaviva_app`, se ejecuta `check_production_readiness`, health y smoke tests. Un fallo conserva la imagen/release anterior para rollback. Nunca se usa SSH público ni claves AWS persistentes.
+
 ## Desarrollo local
 
 El flujo breve y los comandos mantenidos están al inicio de `README.md`. Usa PostgreSQL de Docker, almacenamiento local y nunca el rol migrator para servir `runserver`.

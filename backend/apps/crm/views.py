@@ -12,8 +12,9 @@ from apps.common.exceptions import Conflict
 from apps.common.services import archive_entity, require_current_version, restore_entity
 from apps.audit.services import audit_event
 from apps.analytics.models import WebSession
-from .models import Inquiry, Lead, LeadStageHistory, Sale, Visit
-from .serializers import InquirySerializer, LeadSerializer, PublicInquirySerializer, SaleSerializer, VisitSerializer
+from .models import Inquiry, Lead, LeadStageHistory, PrivacyNoticeVersion, TermsOfUseVersion, Sale, Visit
+from .serializers import InquirySerializer, LeadSerializer, PrivacyNoticeVersionSerializer, PublicInquirySerializer, SaleSerializer, TermsOfUseVersionSerializer, VisitSerializer
+from .legal_services import publish_legal_version
 from .services import change_lead_stage, change_sale_status, change_visit_status, create_sale, create_visit
 from drf_spectacular.utils import extend_schema, OpenApiTypes
 
@@ -25,11 +26,67 @@ class InquiryThrottle(FixedScopeThrottle): scope = "inquiry"
 @permission_classes([AllowAny])
 @throttle_classes([InquiryThrottle])
 def public_inquiry(request):
+    from apps.common.antibot import verify_antibot
+    verify_antibot(request.data.get("antibot_token"), request.META.get("REMOTE_ADDR"))
     serializer = PublicInquirySerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     inquiry = serializer.save()
+    from .notifications import notify_new_inquiry
+    transaction.on_commit(lambda: notify_new_inquiry(inquiry))
     message = "Solicitud de visita enviada." if inquiry.intent == Inquiry.Intent.VISIT_REQUEST else "Recibimos tu consulta. Te contactaremos pronto."
     return Response({"id": inquiry.id, "message": message}, status=201)
+
+
+class PublicLegalDocumentViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    permission_classes = [AllowAny]
+
+    def list(self, request, *args, **kwargs):
+        document = self.get_queryset().filter(status="PUBLISHED", is_active=True).first()
+        if not document:
+            return Response({"detail": "El documento no está disponible."}, status=404)
+        return Response(self.get_serializer(document).data)
+
+
+class PublicPrivacyNoticeViewSet(PublicLegalDocumentViewSet):
+    queryset = PrivacyNoticeVersion.objects.order_by("-effective_at", "-created_at")
+    serializer_class = PrivacyNoticeVersionSerializer
+
+
+class PublicTermsOfUseViewSet(PublicLegalDocumentViewSet):
+    queryset = TermsOfUseVersion.objects.order_by("-effective_at", "-created_at")
+    serializer_class = TermsOfUseVersionSerializer
+
+
+class LegalDocumentAdminViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsMfaVerifiedAdmin, HasRequiredPermission]
+    http_method_names = ["get", "post", "patch", "head", "options"]
+
+    def perform_create(self, serializer):
+        document = serializer.save(status="DRAFT", is_active=False)
+        audit_event(self.request.user, "CREATE", document, request=self.request)
+
+    def perform_update(self, serializer):
+        document = serializer.save()
+        audit_event(self.request.user, "UPDATE", document, request=self.request)
+
+    @action(detail=True, methods=["post"])
+    def publish(self, request, pk=None):
+        document = publish_legal_version(self.get_object(), request.user, request, self.publish_permission)
+        return Response(self.get_serializer(document).data)
+
+
+class PrivacyNoticeAdminViewSet(LegalDocumentAdminViewSet):
+    queryset = PrivacyNoticeVersion.objects.order_by("-created_at")
+    serializer_class = PrivacyNoticeVersionSerializer
+    required_permission = "crm.publish_privacy_notice"
+    publish_permission = "crm.publish_privacy_notice"
+
+
+class TermsOfUseAdminViewSet(LegalDocumentAdminViewSet):
+    queryset = TermsOfUseVersion.objects.order_by("-created_at")
+    serializer_class = TermsOfUseVersionSerializer
+    required_permission = "crm.publish_terms_of_use"
+    publish_permission = "crm.publish_terms_of_use"
 
 
 class LeadViewSet(viewsets.ModelViewSet):

@@ -64,6 +64,7 @@ const adminNav = [
   ["Modelos", "/administracion/modelos", Layers3, ["catalog.manage_models"]],
   ["Catálogos", "/administracion/catalogos", MapPin, ["catalog.manage_catalogs"]],
   ["Contenido", "/administracion/contenido", FileText, ["content.manage_content"]],
+  ["Legal", "/administracion/legal", FileText, ["crm.publish_privacy_notice", "crm.publish_terms_of_use"]],
   ["Consultas", "/administracion/consultas", MessageSquare, ["crm.manage_inquiries"]],
   ["Clientes", "/administracion/clientes", Users, ["crm.manage_leads"]],
   ["Visitas", "/administracion/visitas", CalendarDays, ["crm.manage_visits"]],
@@ -478,6 +479,7 @@ const blankProperty = (): Property => ({
   condition: undefined,
   status: "available",
   sourceType: "PRIVATE",
+  promotionAuthorized: false,
   published: false,
   featured: false,
   currency: "MXN",
@@ -723,6 +725,15 @@ export function PropertyFormPage({ id }: { id?: string }) {
           />
           }
         </div>
+      </FormSection>
+      <FormSection title="Transparencia comercial">
+        <div className="admin-form-grid">
+          <Toggle label="Promoción autorizada por el proveedor" checked={Boolean(item.promotionAuthorized)} onChange={(v) => update("promotionAuthorized", v as never)} />
+          <Text label="Fecha y hora de última verificación (ISO 8601)" value={item.informationVerifiedAt || ""} onChange={(v) => update("informationVerifiedAt", v)} />
+          <Text label="Etiqueta pública opcional del proveedor" value={item.publicProviderLabel || ""} onChange={(v) => update("publicProviderLabel", v)} />
+          <Area label="Referencia interna de la fuente (no pública)" value={item.internalSourceReference || ""} onChange={(v) => update("internalSourceReference", v)} />
+        </div>
+        {item.published && (!item.promotionAuthorized || !item.informationVerifiedAt || (item.sourceType === "DEVELOPER" && !item.developmentModelId)) && <p className="form-error">No se puede publicar: confirma autorización, proveedor y fecha de verificación comercial.</p>}
       </FormSection>
       <FormSection title="Contenido">
         <div className="admin-form-grid">

@@ -36,7 +36,7 @@ def test_lead_stage_changes_close_previous_history_and_open_new(admin_client):
 @pytest.mark.django_db
 def test_inquiry_deduplication_phone_and_ambiguous_identity(client, catalog):
     call_command("seed_system")
-    base = {"first_name": "Uno", "phone": "55 1234 5678", "message": "Información", "listing_slug": catalog["listing"].slug, "privacy_consent": True}
+    base = {"first_name": "Uno", "phone": "55 1234 5678", "message": "Información", "listing_slug": catalog["listing"].slug, "privacy_consent": True, "transfer_consent": True}
     assert client.post("/api/v1/public/inquiries/", base, format="json").status_code == 201
     assert client.post("/api/v1/public/inquiries/", {**base, "phone": "+52 55 1234 5678"}, format="json").status_code == 201
     assert Lead.objects.count() == 1
@@ -68,12 +68,12 @@ def test_privacy_consent_requires_and_records_active_notice(client, catalog):
 def test_inquiry_intent_subject_and_consent_purpose_are_preserved(client, catalog):
     call_command("seed_system")
     general = client.post("/api/v1/public/inquiries/", {"first_name": "General", "email": "general-intent@example.test", "privacy_consent": True, "intent": "GENERAL_CONTACT", "subject": "SEARCH_ASSISTANCE"}, format="json")
-    visit = client.post("/api/v1/public/inquiries/", {"first_name": "Visita", "email": "visit-intent@example.test", "privacy_consent": True, "intent": "VISIT_REQUEST", "listing_slug": catalog["listing"].slug}, format="json")
+    visit = client.post("/api/v1/public/inquiries/", {"first_name": "Visita", "email": "visit-intent@example.test", "privacy_consent": True, "transfer_consent": True, "intent": "VISIT_REQUEST", "listing_slug": catalog["listing"].slug}, format="json")
     assert general.status_code == visit.status_code == 201
     assert Inquiry.objects.get(pk=general.data["id"]).subject == "SEARCH_ASSISTANCE"
     assert Inquiry.objects.get(pk=visit.data["id"]).intent == "VISIT_REQUEST"
-    assert ConsentRecord.objects.get(lead__email="general-intent@example.test").purpose == "GENERAL_CONTACT"
-    assert ConsentRecord.objects.get(lead__email="visit-intent@example.test").purpose == "VISIT_REQUEST"
+    assert ConsentRecord.objects.get(lead__email="general-intent@example.test").purpose == "PRIVACY_NOTICE_ACKNOWLEDGEMENT"
+    assert set(ConsentRecord.objects.filter(lead__email="visit-intent@example.test").values_list("purpose", flat=True)) == {"PRIVACY_NOTICE_ACKNOWLEDGEMENT", "LEAD_TRANSFER"}
     assert Visit.objects.count() == 0
 
 
@@ -134,7 +134,7 @@ def test_public_inquiry_listing_and_session_attribution(client, catalog):
     )
     payload = {
         "first_name": "Atribuido", "email": "atribuido@example.test", "privacy_consent": True,
-        "listing_slug": catalog["listing"].slug, "session_id": str(session.id), "visitor_id": str(visitor.id),
+            "listing_slug": catalog["listing"].slug, "transfer_consent": True, "session_id": str(session.id), "visitor_id": str(visitor.id),
     }
     response = client.post("/api/v1/public/inquiries/", payload, format="json")
     assert response.status_code == 201, response.data
@@ -150,7 +150,7 @@ def test_public_inquiry_listing_and_session_attribution(client, catalog):
 
 
 @pytest.mark.django_db
-def test_inquiry_uses_first_touch_from_an_earlier_session_of_the_same_visitor(client):
+def test_inquiry_links_only_current_session(client):
     from apps.analytics.attribution import first_touch_session, with_first_touch
 
     call_command("seed_system")
@@ -189,14 +189,15 @@ def test_inquiry_uses_first_touch_from_an_earlier_session_of_the_same_visitor(cl
     assert response.status_code == 201, response.data
     lead = Inquiry.objects.get(pk=response.data["id"]).lead
     first.refresh_from_db(); current.refresh_from_db(); unrelated.refresh_from_db(); lead.refresh_from_db()
-    assert first.lead_id == current.lead_id == lead.id
+    assert current.lead_id == lead.id
+    assert first.lead_id is None
     assert unrelated.lead_id is None
-    assert first_touch_session(lead).id == first.id
+    assert first_touch_session(lead).id == current.id
     annotated = with_first_touch(Lead.objects.filter(pk=lead.pk)).get()
-    assert annotated.first_session_id == first.id
-    assert annotated.acquired_campaign == "campaign-a"
-    assert annotated.acquired_source == "facebook"
-    assert lead.first_source == "facebook"
+    assert annotated.first_session_id == current.id
+    assert annotated.acquired_campaign is None
+    assert annotated.acquired_source is None
+    assert lead.first_source == "WEB"
 
 
 @pytest.mark.django_db

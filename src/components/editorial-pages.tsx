@@ -15,7 +15,7 @@ import {
 import { EmptyState, Footer, PublicHeader, useToast } from "@/components/ui";
 import { formatDate, formatLocation, uid } from "@/lib/utils";
 import { inquiryService, useCasaViva } from "@/services";
-import { api } from "@/services/api";
+import { api, apiFetch } from "@/services/api";
 import type { Development, Guide, Inquiry, Property } from "@/types";
 import { ensureCurrentAnalyticsIdentity, trackEvent } from "@/components/analytics-provider";
 
@@ -493,52 +493,35 @@ function MarkdownLite({ content }: { content: string }) {
 }
 
 export function AboutPage() {
+  const [content, setContent] = useState<Record<string, any> | null>(null);
+  useEffect(() => { apiFetch<{ results?: Record<string, any>[] }>("/api/v1/public/about/").then((value) => setContent(value.results?.[0] || null)).catch(() => setContent(null)); }, []);
+  const c = content || { eyebrow: "CasaViva", hero_title: "Una forma más clara de encontrar hogar.", main_title: "Promocionar bien también es informar mejor.", main_body: "CasaViva reúne y promociona propiedades de desarrolladoras y propietarios particulares para facilitar su exploración y acercar a las personas interesadas con el proveedor correspondiente.", what_we_do_title: "Qué hacemos", what_we_do_body: "Presentamos propiedades de forma visual y ordenada, ayudamos a comparar opciones y canalizamos las solicitudes de información hacia quien comercializa cada inmueble.", how_we_work_title: "Cómo trabajamos", how_we_work_body: "Trabajamos como promotores externos. La información publicada parte de los datos proporcionados o autorizados por desarrolladoras y propietarios, y buscamos mantener precios, disponibilidad y características actualizados.", vision_title: "Nuestra visión", vision_body: "Queremos que encontrar una vivienda sea un proceso más claro, con mejor información, herramientas útiles y seguimiento oportuno." };
   return (
     <>
       <PublicHeader />
       <main>
         <section className="container section">
-          <span className="eyebrow">CasaViva</span>
-          <h1>Una forma más clara de encontrar hogar.</h1>
+          <span className="eyebrow">{c.eyebrow}</span>
+          <h1>{c.hero_title}</h1>
         </section>
         <section
           className="brand-block"
-          style={{
-            backgroundImage:
-              "url(https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?auto=format&fit=crop&w=2000&q=85)",
-          }}
+          style={c.hero_media_url ? { backgroundImage: `url(${c.hero_media_url})` } : undefined}
         >
           <div className="brand-copy">
-            <h2>Presentar bien también es informar mejor.</h2>
-            <p>
-              Cada vivienda merece contexto, imágenes cuidadas y datos precisos.
-            </p>
+            <h2>{c.main_title}</h2>
+            <p>{c.main_body}</p>
           </div>
         </section>
         <section className="narrow section editorial-body">
           <div className="amenity-group">
-            <h2>Qué hacemos</h2>
-            <p>
-              Reunimos propiedades y desarrollos para explorarlos de manera
-              visual, ordenada y honesta. Hacemos que comparar sea más sencillo
-              sin reducir una decisión importante a una lista de promesas.
-            </p>
+            <h2>{c.what_we_do_title}</h2><p>{c.what_we_do_body}</p>
           </div>
           <div className="amenity-group">
-            <h2>Cómo trabajamos</h2>
-            <p>
-              Priorizamos información clara, fotografía protagonista y
-              herramientas prácticas. El mismo cuidado editorial acompaña a
-              viviendas de distintos rangos de precio.
-            </p>
+            <h2>{c.how_we_work_title}</h2><p>{c.how_we_work_body}</p>
           </div>
           <div className="amenity-group">
-            <h2>Nuestra visión</h2>
-            <p>
-              Queremos que encontrar casa en México sea una experiencia más
-              tranquila: con menos ruido, mejores preguntas y espacio para
-              decidir.
-            </p>
+            <h2>{c.vision_title}</h2><p>{c.vision_body}</p>
           </div>
         </section>
       </main>
@@ -641,9 +624,10 @@ export function ContactPage() {
               </Field>
               <label className="privacy-check">
                 <input type="checkbox" {...register("privacy")} />
-                <span>He leído y acepto el Aviso de Privacidad.</span>
+                <span>He leído el <Link href="/aviso-de-privacidad">Aviso de Privacidad</Link>.</span>
               </label>
               {errors.privacy && <small>{errors.privacy.message}</small>}
+              {siteSettings?.responsible_address && siteSettings?.privacy_email && <p className="form-privacy-notice">José Alfredo Salazar Hernández, responsable del sitio CasaViva, con domicilio en {siteSettings.responsible_address}, tratará los datos que proporciones para atender tu solicitud, dar seguimiento a tu interés inmobiliario, coordinar visitas cuando corresponda y medir internamente la atención brindada. Puedes limitar el uso de tus datos y ejercer tus derechos ARCO escribiendo a {siteSettings.privacy_email}. Consulta el <Link href="/aviso-de-privacidad">Aviso de Privacidad Integral</Link>.</p>}
               <button className="button" type="submit" disabled={isSubmitting}>
                 Enviar mensaje
               </button>
@@ -673,28 +657,15 @@ function Field({
   );
 }
 export function LegalPage({ type }: { type: "privacy" | "terms" }) {
+  const [document, setDocument] = useState<Record<string, any> | null>();
+  useEffect(() => { apiFetch<Record<string, any>>(`/api/v1/public/${type === "privacy" ? "privacy-notice" : "terms-of-use"}/`).then(setDocument).catch(() => setDocument(null)); }, [type]);
   return (
     <>
       <PublicHeader />
       <main className="narrow section prose">
         <span className="eyebrow">Legal</span>
-        <h1>
-          {type === "privacy" ? "Aviso de privacidad" : "Términos de uso"}
-        </h1>
-        <p>
-          CasaViva trata la información proporcionada para atender consultas,
-          coordinar visitas y dar seguimiento a solicitudes inmobiliarias.
-        </p>
-        <h2>
-          {type === "privacy"
-            ? "Datos y consentimiento"
-            : "Uso de la plataforma"}
-        </h2>
-        <p>
-          {type === "privacy"
-            ? "Los formularios solicitan únicamente los datos necesarios para responder. El consentimiento y la versión del aviso aplicable se conservan como parte del historial de atención."
-            : "La disponibilidad y los precios pueden cambiar. Una publicación informa sobre el inventario registrado y no sustituye la confirmación comercial de CasaViva."}
-        </p>
+        <h1>{document?.title || (type === "privacy" ? "Aviso de privacidad" : "Términos de uso")}</h1>
+        {document ? <><p>Versión {document.version}{document.effective_at ? ` · Vigente desde ${formatDate(document.effective_at)}` : ""}</p><MarkdownLite content={document.body} /></> : <p>Este documento no está disponible temporalmente. No enviaremos formularios sin una versión vigente del Aviso de Privacidad.</p>}
       </main>
       <Footer />
     </>

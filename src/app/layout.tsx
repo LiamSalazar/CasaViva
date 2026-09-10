@@ -7,6 +7,7 @@ import { DataProvider } from "@/components/data-provider";
 import { AnalyticsProvider } from "@/components/analytics-provider";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://casaviva.mx"),
   title: { default: "CasaViva — Encuentra hogar", template: "%s | CasaViva" },
   description:
     "Propiedades y desarrollos en México presentados con claridad y cuidado.",
