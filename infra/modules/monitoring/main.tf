@@ -36,6 +36,31 @@ resource "aws_cloudwatch_metric_alarm" "cpu" {
 
   }
 }
+resource "aws_cloudwatch_metric_alarm" "instance_status" {
+  alarm_name          = "${var.name}-instance-status"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "StatusCheckFailed"
+  namespace           = "AWS/EC2"
+  period              = 60
+  statistic           = "Maximum"
+  threshold           = 0
+  treat_missing_data  = "breaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  dimensions          = { InstanceId = var.instance_id }
+}
+resource "aws_cloudwatch_metric_alarm" "backup_stale" {
+  alarm_name          = "${var.name}-backup-failed-or-stale"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "BackupSuccess"
+  namespace           = "CasaViva/Pilot"
+  period              = 90000
+  statistic           = "Sum"
+  threshold           = 1
+  treat_missing_data  = "breaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+}
 resource "aws_budgets_budget" "monthly" {
   name         = "${var.name}-monthly"
   budget_type  = "COST"
@@ -58,3 +83,4 @@ resource "aws_budgets_budget" "monthly" {
 
   }
 }
+output "sns_topic_arn" { value = aws_sns_topic.alerts.arn }

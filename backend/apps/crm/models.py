@@ -152,6 +152,10 @@ class LegalDocumentVersionBase(UUIDTimeStampedModel):
     content_hash = models.CharField(max_length=64, blank=True)
     is_active = models.BooleanField(default=False)
     historical_content_available = models.BooleanField(default=True)
+    production_ready = models.BooleanField(
+        default=False,
+        help_text="Revisión explícita contra el modelo legal vigente; las versiones legacy no satisfacen readiness.",
+    )
 
     class Meta:
         abstract = True

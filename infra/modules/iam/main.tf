@@ -1,9 +1,8 @@
 variable "name" {
   type = string
 }
-variable "bucket_arns" {
-  type = list(string)
-}
+variable "media_bucket_arn" { type = string }
+variable "backup_bucket_arn" { type = string }
 variable "repository_arns" {
   type = list(string)
 }
@@ -28,7 +27,10 @@ resource "aws_iam_role_policy" "app" {
   role = aws_iam_role.ec2.id
   policy = jsonencode({
     Version = "2012-10-17", Statement = [{
-      Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"], Resource = concat(var.bucket_arns, [for arn in var.bucket_arns : "${arn}/*"])
+      Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"], Resource = ["${var.media_bucket_arn}/*"]
+
+      }, {
+      Effect = "Allow", Action = ["s3:PutObject", "s3:GetObject"], Resource = ["${var.backup_bucket_arn}/daily/*", "${var.backup_bucket_arn}/weekly/*", "${var.backup_bucket_arn}/monthly/*"]
 
       }, {
       Effect = "Allow", Action = ["ecr:GetAuthorizationToken"], Resource = "*"
@@ -41,6 +43,9 @@ resource "aws_iam_role_policy" "app" {
 
       }, {
       Effect = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"], Resource = "arn:aws:logs:*:*:log-group:/casaviva/*"
+
+      }, {
+      Effect = "Allow", Action = ["cloudwatch:PutMetricData"], Resource = "*", Condition = { StringEquals = { "cloudwatch:namespace" = "CasaViva/Pilot" } }
 
     }]
 

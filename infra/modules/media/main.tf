@@ -77,16 +77,29 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "backups" {
 resource "aws_s3_bucket_lifecycle_configuration" "backups" {
   bucket = aws_s3_bucket.backups.id
   rule {
-    id     = "retention"
+    id     = "daily-retention"
     status = "Enabled"
+    filter { prefix = "daily/" }
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
     }
     expiration {
-      days = 90
+      days = 15
 
     }
 
+  }
+  rule {
+    id     = "weekly-retention"
+    status = "Enabled"
+    filter { prefix = "weekly/" }
+    expiration { days = 60 }
+  }
+  rule {
+    id     = "monthly-retention"
+    status = "Enabled"
+    filter { prefix = "monthly/" }
+    expiration { days = 370 }
   }
 }
 resource "aws_cloudfront_origin_access_control" "media" {
@@ -152,3 +165,5 @@ output "media_arn" {
 output "backup_arn" {
   value = aws_s3_bucket.backups.arn
 }
+output "media_bucket" { value = aws_s3_bucket.media.id }
+output "backup_bucket" { value = aws_s3_bucket.backups.id }

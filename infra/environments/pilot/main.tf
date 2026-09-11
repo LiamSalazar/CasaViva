@@ -66,10 +66,11 @@ module "media" {
   name   = var.bucket_namespace
 }
 module "iam" {
-  source          = "../../modules/iam"
-  name            = local.name
-  bucket_arns     = [module.media.media_arn, module.media.backup_arn]
-  repository_arns = module.ecr.repository_arns
+  source            = "../../modules/iam"
+  name              = local.name
+  media_bucket_arn  = module.media.media_arn
+  backup_bucket_arn = module.media.backup_arn
+  repository_arns   = module.ecr.repository_arns
 }
 module "compute" {
   source           = "../../modules/compute"
@@ -91,3 +92,9 @@ output "instance_id" {
 output "public_ip" {
   value = module.compute.public_ip
 }
+output "media_bucket" { value = module.media.media_bucket }
+output "backup_bucket" { value = module.media.backup_bucket }
+output "ecr_frontend_repository_url" { value = module.ecr.repository_urls["casaviva-frontend"] }
+output "ecr_backend_repository_url" { value = module.ecr.repository_urls["casaviva-backend"] }
+output "region" { value = "mx-central-1" }
+output "sns_topic" { value = module.monitoring.sns_topic_arn }

@@ -131,11 +131,13 @@ Las credenciales de esta infraestructura son constantes de prueba aisladas. Play
 
 Documentos: [arquitectura](docs/architecture.md), [modelo y diccionario](docs/database-model.md), [ER](docs/erd.md), [permisos](docs/permissions.md), [seguridad](docs/security.md), [eventos](docs/analytics-events.md), [BI](docs/bi.md), [DW futuro](docs/data-warehouse-roadmap.md), [preparación IA](docs/ai-data-readiness.md), [backups](docs/backup-recovery.md) y [despliegue](docs/deployment.md).
 
-## Preparación para producción
+## Producción Pilot recomendada
+
+Deployment recomendado actual: AWS `mx-central-1`, Pilot para aproximadamente <=500 visitantes/mes. Usa EC2 `t4g.small` ARM64, PostgreSQL 18 local en un EBS de datos separado, buckets S3 privados y despliegue desde ECR/SSM. RDS y Growth se reservan para cuando disponibilidad o escala lo justifiquen.
 
 La arquitectura AWS Pilot y sus comandos están en [docs/aws-pilot-architecture.md](docs/aws-pilot-architecture.md) y [docs/aws-pilot-runbook.md](docs/aws-pilot-runbook.md). Terraform sólo se planifica hasta contar con aprobación explícita; este repositorio no aplica infraestructura ni cambia DNS.
 
-La aplicación no obliga a elegir proveedor. Antes de desplegar: define `config.settings.production`, conecta PostgreSQL externo con SSL, configura `STORAGE_BACKEND=s3` y un bucket S3-compatible, sirve Next y `/api/` bajo HTTPS en el mismo sitio, ejecuta `migrate` con el migrator y después `harden_database_roles`, ejecuta `seed_system` y crea founders una sola vez. Sirve requests con `casaviva_app`, comprueba `/api/health/live/` y `/api/health/ready/`, configura backups externos y completa la [lista de producción](docs/production-checklist.md).
+Antes de desplegar: completa Parameter Store, configura `STORAGE_BACKEND=s3`, sirve Next y `/api/` bajo HTTPS, ejecuta `migrate`/hardening con `MIGRATOR_DATABASE_URL`, y sirve requests sólo con `APP_DATABASE_URL`. `bootstrap_founders` se ejecuta una sola vez. El camino futuro mueve PostgreSQL a RDS privado antes de habilitar nodos stateless/Growth.
 
 Next incorpora los hosts autorizados para imágenes durante el build. Con storage/CDN remoto compila el frontend así (el hostname no es secreto):
 

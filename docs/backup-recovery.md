@@ -8,4 +8,4 @@
 
 Recuperación: congelar escrituras, restaurar DB y objetos en instancias nuevas, ejecutar checks/migraciones/smoke tests, rotar secretos, cambiar tráfico y documentar. Un backup no se declara válido sin restauración probada.
 
-En Pilot, `scripts/backup-postgres-s3.sh` usa exclusivamente `casaviva_backup` y sube un custom dump cifrado al bucket privado. `scripts/test-restore-backup.sh` sólo acepta una URL cuya base incluya `casaviva_restore_test`, restaura en aislamiento y verifica tablas críticas. Alertar por fallo y antigüedad del último objeto.
+En Pilot, el timer systemd diario ejecuta `scripts/backup-postgres-s3.sh` exclusivamente con `casaviva_backup`, verifica el dump, genera SHA-256 y lo sube cifrado. Promueve domingos y primer día del mes; lifecycle conserva daily 15 días, weekly 60 y monthly 370. `scripts/test-postgres-restore.sh` prueba checksum y restore únicamente en PostgreSQL aislado. Ejecutarlo mensualmente y registrar RPO/RTO.

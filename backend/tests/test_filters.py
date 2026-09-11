@@ -65,7 +65,7 @@ def test_public_facets_count_the_complete_filtered_queryset(client, catalog):
     catalog["offering"].save()
     apartment = PropertyType.objects.create(code="apartment", name="Departamento")
     for index in range(30):
-        offering = PropertyOffering.objects.create(source_type="DEVELOPER", condition="USED", development_model=catalog["link"], property_type=apartment)
+        offering = PropertyOffering.objects.create(source_type="DEVELOPER", condition="USED", development_model=catalog["link"], property_type=apartment, promotion_authorized=True, information_verified_at=timezone.now())
         PriceRecord.objects.create(offering=offering, price_type="FIXED", amount_min=900000, effective_from=timezone.now())
         AvailabilityRecord.objects.create(offering=offering, status="AVAILABLE", effective_from=timezone.now())
         Listing.objects.create(offering=offering, title=f"Departamento {index}", slug=f"departamento-facet-{index}", is_published=True, published_at=timezone.now())
@@ -83,7 +83,7 @@ def test_sorting_keeps_on_request_prices_last_without_errors(client, catalog):
     catalog["offering"].condition = "NEW"
     catalog["offering"].save()
     on_request = PropertyOffering.objects.create(
-        source_type="DEVELOPER", condition="NEW", development_model=catalog["link"], property_type=catalog["offering"].property_type,
+        source_type="DEVELOPER", condition="NEW", development_model=catalog["link"], property_type=catalog["offering"].property_type, promotion_authorized=True, information_verified_at=timezone.now(),
     )
     PriceRecord.objects.create(offering=on_request, price_type="ON_REQUEST", effective_from=timezone.now())
     AvailabilityRecord.objects.create(offering=on_request, status="AVAILABLE", effective_from=timezone.now())
@@ -100,7 +100,7 @@ def test_favorites_and_similar_use_database_not_first_page(client, catalog):
     target_id = None
     for index in range(30):
         offering = PropertyOffering.objects.create(
-            source_type="DEVELOPER", condition="NEW", development_model=catalog["link"], property_type=catalog["offering"].property_type,
+            source_type="DEVELOPER", condition="NEW", development_model=catalog["link"], property_type=catalog["offering"].property_type, promotion_authorized=True, information_verified_at=timezone.now(),
         )
         PriceRecord.objects.create(offering=offering, price_type="FIXED", amount_min=900000 + index * 1000, effective_from=timezone.now())
         AvailabilityRecord.objects.create(offering=offering, status="AVAILABLE", effective_from=timezone.now())

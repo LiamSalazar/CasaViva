@@ -137,6 +137,34 @@ def test_property_update_is_atomic_and_does_not_add_unchanged_history(admin_clie
 
 
 @pytest.mark.django_db
+def test_published_property_cannot_become_unauthorized(admin_client, catalog):
+    listing = catalog["listing"]
+    payload = aggregate_payload(catalog)
+    payload.update({"listing_version": listing.version, "offering_version": listing.offering.version})
+    payload["offering"]["source_type"] = "DEVELOPER"
+    payload["offering"]["development_model"] = str(catalog["link"].id)
+    payload["offering"]["promotion_authorized"] = False
+    response = admin_client.patch(f"/api/v1/admin/properties/{listing.id}/", payload, format="json")
+    assert response.status_code == 400
+    listing.offering.refresh_from_db()
+    assert listing.offering.promotion_authorized is True
+
+
+@pytest.mark.django_db
+def test_published_property_cannot_lose_verified_at(admin_client, catalog):
+    listing = catalog["listing"]
+    payload = aggregate_payload(catalog)
+    payload.update({"listing_version": listing.version, "offering_version": listing.offering.version})
+    payload["offering"]["source_type"] = "DEVELOPER"
+    payload["offering"]["development_model"] = str(catalog["link"].id)
+    payload["offering"]["information_verified_at"] = None
+    response = admin_client.patch(f"/api/v1/admin/properties/{listing.id}/", payload, format="json")
+    assert response.status_code == 400
+    listing.offering.refresh_from_db()
+    assert listing.offering.information_verified_at is not None
+
+
+@pytest.mark.django_db
 def test_stale_property_versions_return_409_without_partial_changes(admin_client, catalog):
     created = admin_client.post("/api/v1/admin/properties/", aggregate_payload(catalog), format="json")
     listing = Listing.objects.get(pk=created.data["id"])

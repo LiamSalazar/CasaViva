@@ -6,7 +6,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-casaviva}
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?Define POSTGRES_SUPERUSER_PASSWORD en .env}
-      PGDATA: /var/lib/postgresql/data/pgdata
+      PGDATA: /var/lib/postgresql/18/docker
       CASAVIVA_APP_PASSWORD: ${CASAVIVA_APP_PASSWORD:?Define CASAVIVA_APP_PASSWORD en .env}
       CASAVIVA_MIGRATOR_PASSWORD: ${CASAVIVA_MIGRATOR_PASSWORD:?Define CASAVIVA_MIGRATOR_PASSWORD en .env}
       CASAVIVA_READONLY_PASSWORD: ${CASAVIVA_READONLY_PASSWORD:?Define CASAVIVA_READONLY_PASSWORD en .env}
@@ -14,7 +14,7 @@ services:
     ports:
       - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
-      - casaviva_postgres:/var/lib/postgresql/data
+      - casaviva_postgres:/var/lib/postgresql
       - ./docker/postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-casaviva-roles.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d ${POSTGRES_DB:-casaviva}"]
@@ -24,3 +24,4 @@ services:
 
 volumes:
   casaviva_postgres:
+    name: casaviva_postgres_data

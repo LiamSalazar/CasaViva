@@ -8,7 +8,7 @@ from apps.common.exceptions import Conflict
 from apps.common.services import archive_entity, restore_entity
 from apps.crm.models import Inquiry, LeadInterest, Sale, Visit
 from .models import AvailabilityRecord, Listing, ListingMedia, PriceRecord, SlugRedirect
-from .services import change_availability, change_price, publish_listing, unpublish_listing
+from .services import change_availability, change_price, publish_listing, unpublish_listing, validate_publishable
 
 
 def _same_price(current, payload):
@@ -45,6 +45,9 @@ def update_property(listing_id, validated, offering_serializer, actor, request=N
     # Rebind the already validated data to the locked row.
     offering_serializer.instance = offering
     offering = offering_serializer.save(updated_by=actor, version=offering.version + 1)
+    # The listing was loaded with select_related before the locked offering was
+    # updated; replace Django's relation cache so validation sees new values.
+    listing.offering = offering
     old_slug = listing.slug
     for field, value in validated["listing"].items():
         setattr(listing, field, value)
@@ -73,6 +76,10 @@ def update_property(listing_id, validated, offering_serializer, actor, request=N
     if "media" in validated:
         _replace_media(listing, validated["media"])
     target_published = validated.get("published", listing.is_published)
+    # Publication invariants are continuous, not merely a draft -> published
+    # transition.  Validate the locked, fully updated aggregate before commit.
+    if target_published:
+        validate_publishable(listing)
     if target_published and not listing.is_published:
         listing = publish_listing(listing, actor, request=request)
     elif not target_published and listing.is_published:

@@ -1,3 +1,4 @@
+name: casaviva
 services:
   caddy:
     image: caddy:2.10-alpine
@@ -5,15 +6,24 @@ services:
     ports: ["80:80", "443:443"]
     env_file: .env.production
     volumes: ["./docker/Caddyfile:/etc/caddy/Caddyfile:ro", "caddy_data:/data", "caddy_config:/config"]
-    depends_on: [frontend, backend]
+    depends_on:
+      frontend: { condition: service_healthy }
+      backend: { condition: service_healthy }
   frontend:
     image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE}
     restart: unless-stopped
     expose: ["3000"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
   backend:
     image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE}
     restart: unless-stopped
     env_file: .env.production
+    environment:
+      DATABASE_URL: ${APP_DATABASE_URL:?Set APP_DATABASE_URL for casaviva_app}
     expose: ["8000"]
     depends_on:
       postgres: { condition: service_healthy }
@@ -21,7 +31,12 @@ services:
     image: postgres:18
     restart: unless-stopped
     env_file: .env.production
-    volumes: ["/opt/casaviva/postgres:/var/lib/postgresql/data", "./docker/postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-casaviva-roles.sh:ro"]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-casaviva}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?Set POSTGRES_SUPERUSER_PASSWORD}
+      PGDATA: /var/lib/postgresql/18/docker
+    volumes: ["/opt/casaviva/postgres:/var/lib/postgresql", "./docker/postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-casaviva-roles.sh:ro"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d casaviva"]
       interval: 10s
@@ -33,4 +48,6 @@ services:
     volumes: ["./docker/cloudwatch-agent.json:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json:ro", "/var/run/docker.sock:/var/run/docker.sock:ro", "/opt/casaviva:/opt/casaviva:ro"]
 volumes:
   caddy_data:
+    name: casaviva_caddy_data
   caddy_config:
+    name: casaviva_caddy_config

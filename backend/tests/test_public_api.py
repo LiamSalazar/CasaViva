@@ -43,6 +43,13 @@ def test_public_development_without_media_keeps_gallery_empty(client, catalog):
 
 
 @pytest.mark.django_db
+def test_public_queryset_never_exposes_unauthorized_listing(client, catalog):
+    catalog["offering"].promotion_authorized = False
+    catalog["offering"].save(update_fields=["promotion_authorized", "updated_at"])
+    assert client.get("/api/v1/public/listings/casa-modelo/").status_code == 404
+
+
+@pytest.mark.django_db
 def test_public_inquiry_deduplicates_exact_email(client, catalog):
     call_command("seed_system")
     payload = {"first_name": "Persona", "email": "PERSONA@example.test", "message": "Información", "listing_slug": "casa-modelo", "privacy_consent": True, "transfer_consent": True}

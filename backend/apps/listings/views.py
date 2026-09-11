@@ -1,4 +1,4 @@
-from django.db.models import Count, OuterRef, Subquery, DecimalField, Q, Prefetch, F, Case, When, Value, IntegerField
+from django.db.models import Count, OuterRef, Subquery, DecimalField, Q, Prefetch, F, Case, When, Value, IntegerField, Exists
 from django.db.models.functions import Abs, Coalesce
 from django.http import HttpResponsePermanentRedirect
 from django.shortcuts import get_object_or_404
@@ -30,7 +30,16 @@ from .services import change_availability, change_price
 
 def public_listing_queryset():
     current_price = PriceRecord.objects.filter(offering=OuterRef("offering_id"), effective_to__isnull=True)
-    return Listing.objects.filter(is_published=True, offering__archived_at__isnull=True).select_related(
+    return Listing.objects.filter(
+        is_published=True,
+        offering__archived_at__isnull=True,
+        offering__promotion_authorized=True,
+        offering__information_verified_at__isnull=False,
+        offering__property_type__isnull=False,
+    ).filter(
+        Q(offering__source_type=PropertyOffering.SourceType.DEVELOPER, offering__development_model__isnull=False)
+        | Q(offering__source_type=PropertyOffering.SourceType.PRIVATE, offering__development_model__isnull=True)
+    ).filter(Exists(current_price)).select_related(
         "offering__property_type", "offering__state", "offering__municipality",
         "offering__development_model__development__developer", "offering__development_model__development__state",
         "offering__development_model__development__municipality", "offering__development_model__housing_model",

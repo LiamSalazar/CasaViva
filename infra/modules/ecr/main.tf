@@ -34,3 +34,4 @@ resource "aws_ecr_lifecycle_policy" "this" {
 output "repository_arns" {
   value = [for item in aws_ecr_repository.this : item.arn]
 }
+output "repository_urls" { value = { for name, item in aws_ecr_repository.this : name => item.repository_url } }

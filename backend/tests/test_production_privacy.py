@@ -4,6 +4,7 @@ from django.utils import timezone
 
 from apps.content.models import AboutContent
 from apps.crm.models import ConsentRecord, PrivacyNoticeVersion, TermsOfUseVersion
+from apps.crm.legal_services import find_unresolved_legal_placeholders
 
 
 @pytest.mark.django_db
@@ -39,3 +40,20 @@ def test_legal_draft_publish_hash_audit_and_immutability(admin_client, path, mod
     assert len(published.data["content_hash"]) == 64
     assert admin_client.patch(f"/api/v1/admin/{path}/{draft.id}/", {"body": "Cambio"}, format="json").status_code == 400
     assert model.objects.filter(is_active=True).count() == 1
+
+
+@pytest.mark.django_db
+def test_legal_placeholder_detection_allows_markdown_links():
+    assert find_unresolved_legal_placeholders("Consulte [la guía](/guias/privacidad).") == []
+    assert find_unresolved_legal_placeholders("Domicilio: [DOMICILIO DEL RESPONSABLE]") == ["[DOMICILIO DEL RESPONSABLE]"]
+
+
+@pytest.mark.django_db
+def test_public_legal_serializer_does_not_expose_admin_metadata(client):
+    PrivacyNoticeVersion.objects.create(
+        version="public-safe", title="Aviso", body="Contenido", status="PUBLISHED",
+        is_active=True, production_ready=True, effective_at=timezone.now(), published_at=timezone.now(),
+    )
+    response = client.get("/api/v1/public/privacy-notice/")
+    assert response.status_code == 200
+    assert set(response.data) == {"version", "title", "body", "effective_at", "published_at"}

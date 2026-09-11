@@ -55,9 +55,9 @@ class PublicInquirySerializer(serializers.Serializer):
         return create_inquiry(listing=listing, **data)
 
 
-class LegalDocumentSerializer(serializers.ModelSerializer):
+class AdminLegalDocumentSerializer(serializers.ModelSerializer):
     class Meta:
-        fields = ["id", "version", "title", "body", "effective_at", "published_at", "published_by", "status", "content_hash", "is_active", "historical_content_available", "created_at", "updated_at"]
+        fields = ["id", "version", "title", "body", "effective_at", "published_at", "published_by", "status", "content_hash", "is_active", "historical_content_available", "production_ready", "created_at", "updated_at"]
         read_only_fields = ["id", "published_at", "published_by", "status", "content_hash", "is_active", "created_at", "updated_at"]
 
     def update(self, instance, validated_data):
@@ -66,13 +66,28 @@ class LegalDocumentSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 
-class PrivacyNoticeVersionSerializer(LegalDocumentSerializer):
-    class Meta(LegalDocumentSerializer.Meta):
+class PrivacyNoticeVersionSerializer(AdminLegalDocumentSerializer):
+    class Meta(AdminLegalDocumentSerializer.Meta):
         model = PrivacyNoticeVersion
 
 
-class TermsOfUseVersionSerializer(LegalDocumentSerializer):
-    class Meta(LegalDocumentSerializer.Meta):
+class TermsOfUseVersionSerializer(AdminLegalDocumentSerializer):
+    class Meta(AdminLegalDocumentSerializer.Meta):
+        model = TermsOfUseVersion
+
+
+class PublicLegalDocumentSerializer(serializers.ModelSerializer):
+    class Meta:
+        fields = ["version", "title", "body", "effective_at", "published_at"]
+
+
+class PublicPrivacyNoticeVersionSerializer(PublicLegalDocumentSerializer):
+    class Meta(PublicLegalDocumentSerializer.Meta):
+        model = PrivacyNoticeVersion
+
+
+class PublicTermsOfUseVersionSerializer(PublicLegalDocumentSerializer):
+    class Meta(PublicLegalDocumentSerializer.Meta):
         model = TermsOfUseVersion
 
 

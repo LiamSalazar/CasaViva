@@ -21,11 +21,11 @@ Apply, sólo tras aprobación humana: `terraform -chdir=infra/environments/pilot
 1. Confirmar alarmas, SNS, Budget, SSM, buckets privados y ECR.
 2. Cargar parámetros y comprobar nombres con `aws ssm get-parameters-by-path --path /casaviva-pilot/ --with-decryption`.
 3. Configurar environment protegido `production` y `AWS_DEPLOY_ROLE_ARN` en GitHub.
-4. Lanzar manualmente `.github/workflows/cd.yml` con el SHA probado.
+4. Aprobar el job del GitHub Environment `production` cuando `Deploy Pilot` se dispare tras CI exitoso; `workflow_dispatch` queda sujeto al mismo Environment.
 5. El CD ejecuta por SSM pull, migraciones, hardening, seed, production check, arranque y health checks.
 6. Probar health, portada, búsqueda, ficha, formulario, administración, media y correo de lead.
 7. Ejecutar backup y restauración automatizable en una base temporal; registrar RPO/RTO real.
 
 ## Rollback
 
-El deploy vuelve automáticamente al enlace `/opt/casaviva/current` anterior si falla el arranque o health check. Manualmente, ejecutar por SSM `sudo /opt/casaviva/source/scripts/deploy-pilot.sh SHA_ANTERIOR` y repetir smoke tests. Si una migración incompatible alcanzó producción, detener escrituras y restaurar el backup verificado según `docs/backup-recovery.md`; no improvisar una reversión destructiva.
+El deploy invoca `/opt/casaviva/bin/rollback.sh` si falla el health check. Para rollback manual ejecute ese archivo mediante SSM y repita `scripts/smoke-production.sh`. No revierte migraciones; siga `database-migration-safety.md`.

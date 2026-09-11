@@ -13,7 +13,7 @@ from apps.common.services import archive_entity, require_current_version, restor
 from apps.audit.services import audit_event
 from apps.analytics.models import WebSession
 from .models import Inquiry, Lead, LeadStageHistory, PrivacyNoticeVersion, TermsOfUseVersion, Sale, Visit
-from .serializers import InquirySerializer, LeadSerializer, PrivacyNoticeVersionSerializer, PublicInquirySerializer, SaleSerializer, TermsOfUseVersionSerializer, VisitSerializer
+from .serializers import InquirySerializer, LeadSerializer, PrivacyNoticeVersionSerializer, PublicInquirySerializer, PublicPrivacyNoticeVersionSerializer, PublicTermsOfUseVersionSerializer, SaleSerializer, TermsOfUseVersionSerializer, VisitSerializer
 from .legal_services import publish_legal_version
 from .services import change_lead_stage, change_sale_status, change_visit_status, create_sale, create_visit
 from drf_spectacular.utils import extend_schema, OpenApiTypes
@@ -49,12 +49,12 @@ class PublicLegalDocumentViewSet(mixins.ListModelMixin, viewsets.GenericViewSet)
 
 class PublicPrivacyNoticeViewSet(PublicLegalDocumentViewSet):
     queryset = PrivacyNoticeVersion.objects.order_by("-effective_at", "-created_at")
-    serializer_class = PrivacyNoticeVersionSerializer
+    serializer_class = PublicPrivacyNoticeVersionSerializer
 
 
 class PublicTermsOfUseViewSet(PublicLegalDocumentViewSet):
     queryset = TermsOfUseVersion.objects.order_by("-effective_at", "-created_at")
-    serializer_class = TermsOfUseVersionSerializer
+    serializer_class = PublicTermsOfUseVersionSerializer
 
 
 class LegalDocumentAdminViewSet(viewsets.ModelViewSet):

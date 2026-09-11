@@ -4,15 +4,15 @@
 - [ ] HTTPS y reverse proxy same-origin para Next, `/api/` y media.
 - [ ] Secretos fuera de Git y settings de producción seleccionados.
 - [ ] Hosts y orígenes CSRF explícitos.
-- [ ] PostgreSQL externo y roles técnicos creados.
-- [ ] SSL de PostgreSQL comprobado.
+- [ ] PostgreSQL 18 Pilot sobre EBS separado y roles técnicos creados.
+- [ ] Persistencia y restore ensayados; SSL se exige al migrar a RDS.
 - [ ] Migraciones ejecutadas con `casaviva_migrator`.
 - [ ] `harden_database_roles` ejecutado después de migrar.
 - [ ] `seed_system` ejecutado; catálogo inicial sólo si se desea.
 - [ ] Storage S3-compatible y URLs de media comprobados.
 - [ ] `MEDIA_REMOTE_HOSTNAME` definido como argumento del build frontend.
 - [ ] Una imagen de bucket/CDN probada mediante `next/image`.
-- [ ] Bucket/CDN de media pública accesible sin URLs firmadas.
+- [ ] Media privada accesible mediante URLs firmadas o CloudFront+OAC; bucket nunca público.
 - [ ] Founders configurados una sola vez y MFA verificado.
 - [ ] Correo público y enlaces de Facebook, Instagram y TikTok verificados.
 - [ ] Domicilio responsable, correo de privacidad, contacto/quejas y teléfono confirmados.

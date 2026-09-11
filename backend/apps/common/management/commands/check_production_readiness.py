@@ -6,6 +6,7 @@ from django_otp.plugins.otp_totp.models import TOTPDevice
 
 from apps.content.models import SiteSettings
 from apps.crm.models import PrivacyNoticeVersion, TermsOfUseVersion
+from apps.crm.legal_services import find_unresolved_legal_placeholders
 
 
 class Command(BaseCommand):
@@ -26,9 +27,11 @@ class Command(BaseCommand):
             errors.extend(f"falta {name}" for name, value in required.items() if not value.strip())
             if not (site.contact_email or site.complaints_email): errors.append("falta contact_email o complaints_email")
         for model, label in ((PrivacyNoticeVersion, "Aviso de Privacidad"), (TermsOfUseVersion, "Términos de Uso")):
-            doc = model.objects.filter(status="PUBLISHED", is_active=True).first()
-            if not doc: errors.append(f"falta una versión publicada de {label}")
-            elif any(token in doc.body.upper() for token in ("[DOMICILIO", "[CORREO", "[TELÉFONO", "PENDIENTE")): errors.append(f"{label} contiene placeholders")
+            doc = model.objects.filter(status="PUBLISHED", is_active=True, production_ready=True).first()
+            if not doc: errors.append(f"falta una versión production-ready publicada de {label}")
+            elif not doc.body.strip() or not doc.content_hash or not doc.effective_at or not doc.published_at:
+                errors.append(f"{label} no tiene contenido, hash o fechas requeridas")
+            elif find_unresolved_legal_placeholders(doc.body): errors.append(f"{label} contiene placeholders")
         if connection.vendor == "postgresql" and connection.settings_dict.get("USER") != "casaviva_app": errors.append("la aplicación no usa el rol casaviva_app")
         if not TOTPDevice.objects.filter(confirmed=True, user__is_active=True, user__is_staff=True).exists(): errors.append("MFA administrativo no está inicializado")
         if errors:
