@@ -77,6 +77,14 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "backups" {
 resource "aws_s3_bucket_lifecycle_configuration" "backups" {
   bucket = aws_s3_bucket.backups.id
   rule {
+    id     = "abort-incomplete-uploads"
+    status = "Enabled"
+    filter {}
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+  rule {
     id     = "daily-retention"
     status = "Enabled"
     filter { prefix = "daily/" }
@@ -93,13 +101,23 @@ resource "aws_s3_bucket_lifecycle_configuration" "backups" {
     id     = "weekly-retention"
     status = "Enabled"
     filter { prefix = "weekly/" }
-    expiration { days = 60 }
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+    expiration {
+      days = 60
+    }
   }
   rule {
     id     = "monthly-retention"
     status = "Enabled"
     filter { prefix = "monthly/" }
-    expiration { days = 370 }
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+    expiration {
+      days = 370
+    }
   }
 }
 resource "aws_cloudfront_origin_access_control" "media" {

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { failOnPageErrors, loginAdmin } from "./helpers";
+import { failOnPageErrors, restoreAdminSession } from "./helpers";
 
 test("catálogo crea desarrolladora, desarrollo, modelo y relación dinámica", async ({ page }) => {
   test.setTimeout(90_000);
@@ -8,7 +8,7 @@ test("catálogo crea desarrolladora, desarrollo, modelo y relación dinámica", 
   const development = "Desarrollo E2E dinámico";
   const model = "Modelo E2E dinámico";
 
-  await loginAdmin(page, "catalog@example.test");
+  await restoreAdminSession(page, "catalog@example.test");
   await page.goto("/administracion/desarrolladoras");
   await page.getByRole("button", { name: "Nuevo registro" }).click();
   await page.getByLabel("Nombre").fill(developer);
@@ -47,6 +47,8 @@ test("catálogo crea desarrolladora, desarrollo, modelo y relación dinámica", 
   await page.getByLabel("Condición").selectOption("new");
   await page.getByLabel("Estado de inventario").selectOption("available");
   await page.getByLabel("Precio MXN").fill("1300000");
+  await page.getByLabel("Promoción autorizada por el proveedor").check();
+  await page.getByLabel("Fecha y hora de última verificación (ISO 8601)").fill(new Date().toISOString());
   await page.getByLabel("Publicada").check();
   await page.getByRole("button", { name: "Guardar propiedad" }).click();
   // La primera visita al listado puede compilar la ruta bajo `next dev`.

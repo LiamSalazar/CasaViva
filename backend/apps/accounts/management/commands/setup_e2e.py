@@ -39,6 +39,7 @@ class Command(BaseCommand):
             ("marketing@example.test", "Marketing", False, founder),
             ("content@example.test", "Contenido", False, founder),
             ("geo@example.test", "Geo", False, founder),
+            ("mfa@example.test", "MFA", False, founder),
         ]
         for email, first_name, is_owner, group in fixtures:
             user, _ = User.objects.get_or_create(email=email, defaults={"first_name": first_name})
@@ -83,6 +84,9 @@ class Command(BaseCommand):
                         "created_by": owner_user, "updated_by": owner_user,
                     },
                 )
+                offering.promotion_authorized = True
+                offering.information_verified_at = offering.information_verified_at or timezone.now()
+                offering.save(update_fields=["promotion_authorized", "information_verified_at", "updated_at"])
                 listing, _ = Listing.objects.get_or_create(
                     offering=offering,
                     defaults={
@@ -121,9 +125,16 @@ class Command(BaseCommand):
                             "created_by": owner_user, "updated_by": owner_user,
                         },
                     )
+                    offering.promotion_authorized = True
+                    offering.information_verified_at = offering.information_verified_at or timezone.now()
                     if offering.development_model_id != development_model.id:
                         offering.development_model = development_model
-                        offering.save(update_fields=["development_model", "updated_at"])
+                    offering.save(
+                        update_fields=[
+                            "development_model", "promotion_authorized",
+                            "information_verified_at", "updated_at",
+                        ]
+                    )
                     development_listing, _ = Listing.objects.get_or_create(
                         offering=offering,
                         defaults={

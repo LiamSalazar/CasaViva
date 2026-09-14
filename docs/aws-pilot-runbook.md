@@ -21,8 +21,9 @@ Apply, sólo tras aprobación humana: `terraform -chdir=infra/environments/pilot
 1. Confirmar alarmas, SNS, Budget, SSM, buckets privados y ECR.
 2. Cargar parámetros y comprobar nombres con `aws ssm get-parameters-by-path --path /casaviva-pilot/ --with-decryption`.
 3. Configurar environment protegido `production` y `AWS_DEPLOY_ROLE_ARN` en GitHub.
-4. Aprobar el job del GitHub Environment `production` cuando `Deploy Pilot` se dispare tras CI exitoso; `workflow_dispatch` queda sujeto al mismo Environment.
+4. Aprobar el job del GitHub Environment `production` cuando `Deploy Pilot` se dispare exclusivamente tras CI exitoso en `main`. No existe un disparador manual que omita CI.
 5. El CD ejecuta por SSM pull, migraciones, hardening, seed, production check, arranque y health checks.
+   El primer deploy también materializa `/opt/casaviva/shared/backup.env` con permisos `0600`, usando únicamente `casaviva_backup`, y valida su URI S3 antes de habilitar el camino operativo de backup.
 6. Probar health, portada, búsqueda, ficha, formulario, administración, media y correo de lead.
 7. Ejecutar backup y restauración automatizable en una base temporal; registrar RPO/RTO real.
 

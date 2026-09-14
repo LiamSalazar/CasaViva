@@ -52,6 +52,35 @@ variable "availability_zones" {
 locals {
   name = "casaviva-pilot"
 }
+data "aws_iam_policy_document" "pilot_kms" {
+  # KMS key policies require Resource="*": it means this key only, not every KMS key.
+  # The account-root principal delegates authorization to this account's IAM; it is not public access.
+  # checkov:skip=CKV_AWS_356:AWS KMS key-policy grammar requires Resource="*" for statements attached to the key.
+  # checkov:skip=CKV_AWS_111:The standard account IAM-delegation statement is constrained to this account root and this key policy.
+  # checkov:skip=CKV_AWS_109:Key administration remains constrained to this account root; workload permissions are granted separately through IAM.
+  statement {
+    sid       = "AccountIAMDelegation"
+    actions   = ["kms:*"]
+    resources = ["*"]
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+  }
+}
+resource "aws_kms_key" "pilot" {
+  description             = "CasaViva Pilot root and PostgreSQL EBS encryption"
+  enable_key_rotation     = true
+  deletion_window_in_days = 30
+  policy                  = data.aws_iam_policy_document.pilot_kms.json
+  tags = {
+    Name = local.name
+  }
+}
+resource "aws_kms_alias" "pilot" {
+  name          = "alias/casaviva-pilot"
+  target_key_id = aws_kms_key.pilot.key_id
+}
 module "network" {
   source = "../../modules/network"
   name   = local.name
@@ -79,6 +108,7 @@ module "compute" {
   subnet_id        = module.network.public_subnet_ids[0]
   instance_profile = module.iam.instance_profile_name
   ami_id           = var.ami_id
+  kms_key_arn      = aws_kms_key.pilot.arn
 }
 module "monitoring" {
   source       = "../../modules/monitoring"

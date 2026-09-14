@@ -20,7 +20,7 @@ jobs:
       - run: ./scripts/verify.sh
       - run: npm audit --audit-level=high
       - run: backend/.venv/bin/pip-audit -r backend/requirements/production.txt
-      - uses: aquasecurity/trivy-action@master
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with: { scan-type: fs, severity: HIGH,CRITICAL, exit-code: "1" }
   terraform:
     runs-on: ubuntu-latest
@@ -33,5 +33,5 @@ jobs:
       - run: terraform -chdir=infra/environments/pilot validate
       - uses: terraform-linters/setup-tflint@v5
       - run: tflint --chdir=infra/environments/pilot --recursive
-      - uses: bridgecrewio/checkov-action@master
+      - uses: bridgecrewio/checkov-action@a8664e3a0549367977f0cda990a34311835c87c0 # v12.3123.0 (Docker action; no runner Node dependency)
         with: { directory: infra, framework: terraform }

@@ -1,6 +1,5 @@
 name: Deploy Pilot
 on:
-  workflow_dispatch:
   workflow_run:
     workflows: [CI]
     types: [completed]
@@ -8,15 +7,13 @@ permissions: { id-token: write, contents: read }
 concurrency: { group: production, cancel-in-progress: false }
 jobs:
   deploy:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
     environment: production
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: "${{ github.event.workflow_run.head_sha || github.sha }}"
+          ref: "${{ github.event.workflow_run.head_sha }}"
       - uses: aws-actions/configure-aws-credentials@v5
         with: { role-to-assume: "${{ vars.AWS_DEPLOY_ROLE_ARN }}", aws-region: mx-central-1 }
       - uses: aws-actions/amazon-ecr-login@v2
@@ -26,12 +23,12 @@ jobs:
         run: |
           account="$(aws sts get-caller-identity --query Account --output text)"
           registry="$account.dkr.ecr.mx-central-1.amazonaws.com"
-          sha='${{ github.event.workflow_run.head_sha || github.sha }}'
+          sha='${{ github.event.workflow_run.head_sha }}'
           docker buildx build --platform linux/arm64 -f docker/backend.Dockerfile -t "$registry/casaviva-backend:$sha" --push .
           docker buildx build --platform linux/arm64 --build-arg MEDIA_REMOTE_HOSTNAME='${{ vars.MEDIA_REMOTE_HOSTNAME }}' -f docker/frontend.Dockerfile -t "$registry/casaviva-frontend:$sha" --push .
       - name: Deploy through SSM
         run: |
-          sha='${{ github.event.workflow_run.head_sha || github.sha }}'
+          sha='${{ github.event.workflow_run.head_sha }}'
           command_id="$(aws ssm send-command --instance-ids '${{ vars.PILOT_INSTANCE_ID }}' --document-name AWS-RunShellScript --parameters commands="sudo /opt/casaviva/bin/deploy.sh $sha" --query Command.CommandId --output text)"
           aws ssm wait command-executed --command-id "$command_id" --instance-id '${{ vars.PILOT_INSTANCE_ID }}'
           aws ssm get-command-invocation --command-id "$command_id" --instance-id '${{ vars.PILOT_INSTANCE_ID }}'

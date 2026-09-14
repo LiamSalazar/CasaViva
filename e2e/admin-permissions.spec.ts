@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { failOnPageErrors, loginAdmin } from "./helpers";
+import { failOnPageErrors, loginAdmin, restoreAdminSession } from "./helpers";
 
 test("login rechaza password y MFA incorrectos", async ({ page }) => {
   // Las dos solicitudes 400 son el resultado esperado de este caso adverso.
@@ -21,7 +21,7 @@ test("login rechaza password y MFA incorrectos", async ({ page }) => {
 
 test("Founder Admin opera negocio pero la API de usuarios devuelve 403", async ({ page }) => {
   const assertNoErrors = failOnPageErrors(page);
-  await loginAdmin(page, "ana@example.test");
+  await restoreAdminSession(page, "ana@example.test");
   await page.goto("/administracion/propiedades");
   await expect(page.getByRole("link", { name: "Nueva propiedad" })).toBeVisible();
   const response = await page.request.get("http://127.0.0.1:3000/api/v1/admin/users/");
@@ -31,9 +31,14 @@ test("Founder Admin opera negocio pero la API de usuarios devuelve 403", async (
 
 test("Owner puede consultar usuarios", async ({ page }) => {
   const assertNoErrors = failOnPageErrors(page);
-  await loginAdmin(page);
+  await restoreAdminSession(page);
   await page.goto("/administracion/usuarios");
   await expect(page.getByRole("heading", { name: "Usuarios", level: 1 })).toBeVisible();
   await expect(page.getByText("liam@example.test")).toBeVisible();
   assertNoErrors();
+});
+
+test("MFA completo lleva de password a TOTP y al panel", async ({ page }) => {
+  await loginAdmin(page, "mfa@example.test");
+  await expect(page.getByRole("heading", { name: /Panel|Resumen|Administración/i })).toBeVisible();
 });

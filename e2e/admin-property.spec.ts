@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { failOnPageErrors, loginAdmin } from "./helpers";
+import { failOnPageErrors, restoreAdminSession } from "./helpers";
 
 test("propiedad particular conserva campos, precio, publicación, consulta, archivo y restauración", async ({ page }) => {
   test.setTimeout(90_000);
@@ -9,7 +9,7 @@ test("propiedad particular conserva campos, precio, publicación, consulta, arch
 
   // Alfredo prueba el mismo CRUD empresarial que Ana sin reutilizar el TOTP
   // consumido por el escenario Owner ejecutado inmediatamente antes.
-  await loginAdmin(page, "alfredo@example.test");
+  await restoreAdminSession(page, "alfredo@example.test");
   await page.goto("/administracion/propiedades/nueva");
   await expect(page.getByRole("heading", { name: "Nueva propiedad", level: 1 })).toBeVisible();
 
@@ -22,6 +22,8 @@ test("propiedad particular conserva campos, precio, publicación, consulta, arch
   await page.getByLabel("Condición").selectOption("used");
   await page.getByLabel("Estado de inventario").selectOption("available");
   await page.getByLabel("Publicada").check();
+  await page.getByLabel("Promoción autorizada por el proveedor").check();
+  await page.getByLabel("Fecha y hora de última verificación (ISO 8601)").fill(new Date().toISOString());
   await page.getByLabel("Destacada").check();
   await page.getByLabel("Precio MXN").fill("1750000");
   await page.getByLabel("Ubicación").selectOption({ index: 1 });
@@ -36,7 +38,7 @@ test("propiedad particular conserva campos, precio, publicación, consulta, arch
   await page.getByLabel("Construcción mínima m²").fill("118.5");
   await page.getByLabel("Descripción corta").fill("Propiedad para comprobar el flujo integral real.");
   await page.getByLabel("Descripción completa").fill("Descripción original persistida desde el formulario administrativo.");
-  await page.getByLabel("Referencia").fill("E2E-PRIVATE-ROUNDTRIP");
+  await page.getByLabel("Referencia", { exact: true }).fill("E2E-PRIVATE-ROUNDTRIP");
   await page.getByLabel("Comisión %").fill("3.5");
   await page.getByLabel("Notas internas").fill("Dato confidencial de prueba.");
   await page.getByRole("button", { name: "Guardar propiedad" }).click();
@@ -51,7 +53,7 @@ test("propiedad particular conserva campos, precio, publicación, consulta, arch
   await expect(page.getByLabel("Longitud")).toHaveValue("-98.968765");
   await expect(page.getByLabel("Niveles mínimos")).toHaveValue("2");
   await expect(page.getByLabel("Condición")).toHaveValue("used");
-  await expect(page.getByLabel("Referencia")).toHaveValue("E2E-PRIVATE-ROUNDTRIP");
+  await expect(page.getByLabel("Referencia", { exact: true })).toHaveValue("E2E-PRIVATE-ROUNDTRIP");
 
   const listingId = new URL(page.url()).pathname.split("/").at(-1)!;
   await page.getByLabel("Precio MXN").fill("1825000");
@@ -76,7 +78,8 @@ test("propiedad particular conserva campos, precio, publicación, consulta, arch
   await page.getByLabel("Nombre").fill("Cliente E2E");
   await page.getByLabel("Correo").fill("cliente.property@example.test");
   await page.getByLabel("Teléfono").fill("5512345678");
-  await page.getByLabel(/He leído y acepto/).check();
+  await page.getByLabel("He leído el Aviso de Privacidad.", { exact: true }).check();
+  await page.getByLabel(/Autorizo que CasaViva comparta mis datos/).check();
   await page.getByRole("button", { name: "Solicitar información" }).click();
   await expect(page.getByRole("heading", { name: "Gracias por escribirnos." })).toBeVisible();
 

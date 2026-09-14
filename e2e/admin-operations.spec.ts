@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { failOnPageErrors, loginAdmin } from "./helpers";
+import { failOnPageErrors, restoreAdminSession } from "./helpers";
 
 test("Founder administra campaña y gasto sin borrar historia", async ({ page }) => {
   const assertNoErrors = failOnPageErrors(page);
   const campaign = "Campaña operativa E2E";
-  await loginAdmin(page, "marketing@example.test");
+  await restoreAdminSession(page, "marketing@example.test");
   await page.goto("/administracion/marketing");
 
   await page.getByRole("button", { name: "Nueva campaña" }).click();
@@ -33,7 +33,7 @@ test("Founder administra campaña y gasto sin borrar historia", async ({ page })
 
 test("Founder crea la jerarquía geográfica completa desde Catálogos", async ({ page }) => {
   const assertNoErrors = failOnPageErrors(page);
-  await loginAdmin(page, "geo@example.test");
+  await restoreAdminSession(page, "geo@example.test");
   await page.goto("/administracion/catalogos");
   const panel = page.getByRole("heading", { name: "Ubicaciones auxiliares" }).locator("..");
   const kind = panel.locator("select").first();
@@ -68,7 +68,7 @@ test("Founder crea la jerarquía geográfica completa desde Catálogos", async (
 test("CMS persiste el Hero y una guía pasa de borrador a pública con imagen", async ({ page }) => {
   test.setTimeout(90_000);
   const assertNoErrors = failOnPageErrors(page);
-  await loginAdmin(page, "content@example.test");
+  await restoreAdminSession(page, "content@example.test");
   await page.goto("/administracion/contenido");
   await page.getByLabel("Antetítulo").fill("Selección editorial E2E");
   await page.getByLabel("Título", { exact: true }).fill("Un hogar probado de extremo a extremo");
@@ -105,7 +105,7 @@ test("CMS persiste el Hero y una guía pasa de borrador a pública con imagen", 
 test("Founder actualiza redes y el sitio público refleja la configuración central", async ({ page }) => {
   const assertNoErrors = failOnPageErrors(page);
   const instagram = "https://www.instagram.com/casaviva-e2e/";
-  await loginAdmin(page, "content@example.test");
+  await restoreAdminSession(page, "content@example.test");
   await page.goto("/administracion/contenido");
   await page.getByLabel("Instagram", { exact: true }).fill(instagram);
   await page.getByRole("button", { name: "Guardar información de contacto" }).click();

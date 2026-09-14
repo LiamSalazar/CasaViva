@@ -1,5 +1,15 @@
 import { createHmac } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { expect, type Page } from "@playwright/test";
+
+export function storageStatePath(email: string): string {
+  return `playwright/.auth/${email.replace(/[^a-z0-9]+/gi, "-")}.json`;
+}
+
+export async function restoreAdminSession(page: Page, email = "liam@example.test") {
+  const state = JSON.parse(await readFile(storageStatePath(email), "utf8"));
+  await page.context().addCookies(state.cookies);
+}
 
 export function totp(secretHex: string, now = Date.now()): string {
   const counter = BigInt(Math.floor(now / 30_000));

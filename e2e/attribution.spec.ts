@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { failOnPageErrors, loginAdmin } from "./helpers";
+import { failOnPageErrors, restoreAdminSession } from "./helpers";
 
 test("UTM conserva atribución desde sesión hasta venta y BI", async ({ page }) => {
   test.setTimeout(90_000);
@@ -11,7 +11,7 @@ test("UTM conserva atribución desde sesión hasta venta y BI", async ({ page })
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem("casaviva-session-id"))).toBeTruthy();
   const identity = await page.evaluate(() => ({
     sessionId: sessionStorage.getItem("casaviva-session-id"),
-    visitorId: localStorage.getItem("casaviva-visitor-id"),
+    visitorId: sessionStorage.getItem("casaviva-session-visitor-id"),
   }));
   expect(identity.sessionId).toBeTruthy();
   expect(identity.visitorId).toBeTruthy();
@@ -20,11 +20,12 @@ test("UTM conserva atribución desde sesión hasta venta y BI", async ({ page })
   await page.getByLabel("Nombre").fill("Cliente atribuido E2E");
   await page.getByLabel("Correo").fill(email);
   await page.getByLabel("Teléfono").fill("5511112233");
-  await page.getByLabel(/He leído y acepto/).check();
+  await page.getByLabel("He leído el Aviso de Privacidad.", { exact: true }).check();
+  await page.getByLabel(/Autorizo que CasaViva comparta mis datos/).check();
   await page.getByRole("button", { name: "Solicitar información" }).click();
   await expect(page.getByRole("heading", { name: "Gracias por escribirnos." })).toBeVisible();
 
-  await loginAdmin(page, "attribution@example.test");
+  await restoreAdminSession(page, "attribution@example.test");
   await page.goto("/administracion/consultas");
   await expect(page.getByText("Cliente atribuido E2E")).toBeVisible();
 

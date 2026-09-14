@@ -29,6 +29,7 @@ export function getAnalyticsIdentity(): AnalyticsIdentity {
   if (typeof window === "undefined") return { visitorId: undefined, sessionId: undefined };
   const lastActivity = Number(sessionStorage.getItem(ANALYTICS_LAST_ACTIVITY_KEY) || 0);
   if (lastActivity && Date.now() - lastActivity > ANALYTICS_SESSION_TIMEOUT_MS) {
+    sessionStorage.removeItem(ANALYTICS_VISITOR_KEY);
     sessionStorage.removeItem(ANALYTICS_SESSION_KEY);
     sessionStorage.removeItem(ANALYTICS_LAST_ACTIVITY_KEY);
     sessionStorage.removeItem(ANALYTICS_ATTRIBUTION_KEY);

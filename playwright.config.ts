@@ -13,8 +13,9 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "mobile", grep: /@mobile/, use: { ...devices["iPhone 13"], browserName: "chromium" } },
+    { name: "auth", testMatch: /auth\.setup\.ts/ },
+    { name: "chromium", testIgnore: /auth\.setup\.ts/, dependencies: ["auth"], use: { ...devices["Desktop Chrome"] } },
+    { name: "mobile", grep: /@mobile/, testIgnore: /auth\.setup\.ts/, dependencies: ["auth"], use: { ...devices["iPhone 13"], browserName: "chromium" } },
   ],
   webServer: [
     {

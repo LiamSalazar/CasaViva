@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { failOnPageErrors, loginAdmin } from "./helpers";
+import { failOnPageErrors, restoreAdminSession } from "./helpers";
 
 test("Owner administra roles y la navegación mantiene icono y texto en línea", async ({ page }) => {
   const assertNoErrors = failOnPageErrors(page);
-  await loginAdmin(page);
+  await restoreAdminSession(page);
   await page.goto("/administracion/roles");
   await expect(page.getByRole("heading", { name: "Roles y permisos" })).toBeVisible();
   await expect(page.getByText("Administrador general")).toBeVisible();
@@ -18,7 +18,7 @@ test("Owner administra roles y la navegación mantiene icono y texto en línea",
 
 test("Cerrar sesión permanece visible con sidebar alto y zoom normal", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 600 });
-  await loginAdmin(page);
+  await restoreAdminSession(page);
   const logout = page.getByRole("button", { name: "Cerrar sesión" });
   for (const height of [600, 768]) {
     await page.setViewportSize({ width: 1366, height });

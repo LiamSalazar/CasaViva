@@ -13,6 +13,7 @@ htmlcov/
 coverage.json
 test-results/
 playwright-report/
+playwright/.auth/
 .next/
 node_modules/
 **/.terraform/
