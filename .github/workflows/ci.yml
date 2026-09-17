@@ -31,6 +31,8 @@ jobs:
       - run: terraform fmt -check -recursive infra
       - run: terraform -chdir=infra/environments/pilot init -backend=false
       - run: terraform -chdir=infra/environments/pilot validate
+      - run: terraform -chdir=infra/environments/production init -backend=false && terraform -chdir=infra/environments/production validate
+      - run: terraform -chdir=infra/modules/growth init -backend=false && terraform -chdir=infra/modules/growth validate
       - uses: terraform-linters/setup-tflint@v5
       - run: tflint --chdir=infra/environments/pilot --recursive
       - uses: bridgecrewio/checkov-action@a8664e3a0549367977f0cda990a34311835c87c0 # v12.3123.0 (Docker action; no runner Node dependency)

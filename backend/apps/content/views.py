@@ -4,6 +4,7 @@ from .models import AboutContent, Guide, HomeContent, LocationContent, SiteSetti
 from .serializers import AboutContentSerializer, GuideSerializer, HomeContentSerializer, LocationContentSerializer, PublicGuideSerializer, PublicSiteSettingsSerializer, SiteSettingsSerializer
 from apps.accounts.permissions import HasRequiredPermission, IsMfaVerifiedAdmin
 from apps.audit.services import audit_event
+from apps.audit.services import snapshot
 from apps.common.exceptions import Conflict
 from apps.common.services import archive_entity, require_current_version, restore_entity
 from rest_framework.decorators import action
@@ -37,8 +38,9 @@ class ContentBusinessViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         require_current_version(self.request.data.get("version"), serializer.instance.version)
+        before = snapshot(serializer.instance)
         obj = serializer.save(updated_by=self.request.user, version=serializer.instance.version + 1)
-        audit_event(self.request.user, "UPDATE", obj, request=self.request)
+        audit_event(self.request.user, "UPDATE", obj, old_values=before, new_values=snapshot(obj), request=self.request)
 
     def destroy(self, request, *args, **kwargs):
         archive_entity(self.get_object(), request.user)
@@ -74,6 +76,25 @@ class HomeContentViewSet(ContentBusinessViewSet):
 class SiteSettingsViewSet(ContentBusinessViewSet):
     queryset = SiteSettings.objects.order_by("key", "id")
     serializer_class = SiteSettingsSerializer
+
+    sensitive_fields = {
+        "brand_name", "responsible_name", "operator_type", "commercial_role",
+        "commercial_role_display", "responsible_address", "privacy_email",
+        "complaints_email", "contact_phone", "verification_warning_days",
+    }
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        changed_sensitive = self.sensitive_fields.intersection(self.request.data)
+        if changed_sensitive and not (
+            self.request.user.is_superuser or self.request.user.has_perm("content.manage_legal_identity")
+        ):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("No tienes permiso para modificar la identidad legal de CasaViva.")
+        require_current_version(self.request.data.get("version"), instance.version)
+        before = snapshot(instance)
+        obj = serializer.save(updated_by=self.request.user, version=instance.version + 1)
+        audit_event(self.request.user, "UPDATE", obj, old_values=before, new_values=snapshot(obj), request=self.request)
 
     def destroy(self, request, *args, **kwargs):
         return Response({"detail": "La información del sitio se edita; no se elimina."}, status=405)

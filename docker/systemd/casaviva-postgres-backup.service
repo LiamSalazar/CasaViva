@@ -1,0 +1,10 @@
+[Unit]
+Description=CasaViva PostgreSQL backup to S3
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/opt/casaviva/shared/backup.env
+ExecStart=/opt/casaviva/bin/backup-postgres-s3.sh
+User=root

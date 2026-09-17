@@ -13,7 +13,7 @@ BUSINESS_PERMISSIONS = [
     "catalog.manage_offerings", "catalog.manage_catalogs", "listings.publish_listing",
     "listings.unpublish_listing", "listings.archive_listing", "listings.restore_listing",
     "listings.hard_delete_listing", "crm.manage_leads", "crm.manage_inquiries",
-    "crm.manage_visits", "crm.manage_sales", "crm.publish_privacy_notice", "crm.publish_terms_of_use", "content.manage_content",
+    "crm.manage_visits", "crm.manage_sales", "crm.publish_privacy_notice", "crm.publish_terms_of_use", "content.manage_content", "content.manage_legal_identity",
     "analytics.view_bi", "marketing.view_campaigns", "marketing.manage_campaigns",
     "marketing.view_spend", "marketing.manage_spend",
     "audit.view_audit", "audit.hard_delete_business_record",
@@ -51,7 +51,7 @@ def seed_groups():
     if owner_created:
         owner.permissions.set([by_key[key] for key in BUSINESS_PERMISSIONS + SECURITY_PERMISSIONS if key in by_key])
     else:
-        owner.permissions.add(*[by_key[key] for key in ("crm.publish_privacy_notice", "crm.publish_terms_of_use") if key in by_key])
+        owner.permissions.add(*[by_key[key] for key in ("crm.publish_privacy_notice", "crm.publish_terms_of_use", "content.manage_legal_identity") if key in by_key])
     RoleProfile.objects.get_or_create(group=owner, defaults={"description": "Propietario reservado de CasaViva.", "is_system": True, "is_owner": True})
     roles = {}
     for name, config in DEFAULT_ROLES.items():
@@ -59,7 +59,7 @@ def seed_groups():
         if created:
             group.permissions.set([by_key[key] for key in config["permissions"] if key in by_key])
         elif name == "Founder Admin":
-            group.permissions.add(*[by_key[key] for key in ("crm.publish_privacy_notice", "crm.publish_terms_of_use") if key in by_key])
+            group.permissions.add(*[by_key[key] for key in ("crm.publish_privacy_notice", "crm.publish_terms_of_use", "content.manage_legal_identity") if key in by_key])
         RoleProfile.objects.get_or_create(group=group, defaults={"description": config["description"], "is_system": True, "is_owner": False})
         roles[name] = group
     return owner, roles["Founder Admin"]

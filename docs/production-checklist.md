@@ -5,6 +5,8 @@
 - [ ] Secretos fuera de Git y settings de producción seleccionados.
 - [ ] Hosts y orígenes CSRF explícitos.
 - [ ] PostgreSQL 18 Pilot sobre EBS separado y roles técnicos creados.
+- [ ] First install completado por túnel SSM; no existe listener público durante bootstrap.
+- [ ] Bundle ops del mismo SHA que las imágenes instalado con checksum verificado.
 - [ ] Persistencia y restore ensayados; SSL se exige al migrar a RDS.
 - [ ] Migraciones ejecutadas con `casaviva_migrator`.
 - [ ] `harden_database_roles` ejecutado después de migrar.
@@ -22,6 +24,8 @@
 - [ ] Turnstile server-side configurado si `ANTIBOT_ENABLED=true` y notificación SES/SMTP probada.
 - [ ] Budget 25/30/35, alarmas y destinatarios confirmados; no existe apagado automático.
 - [ ] Backup diario S3 y restauración aislada ensayados; RPO/RTO aceptados.
+- [ ] `verify-backup-systemd.sh` confirma env 0600, timer activo, último resultado y próxima ejecución.
+- [ ] Segundo deploy y rollback real restauran aplicación y bundle ops anteriores.
 - [ ] Dominio definitivo y todos sus subdominios relevantes funcionan por HTTPS.
 - [ ] No existe dependencia HTTP antes de activar HSTS.
 - [ ] HSTS probado primero con `0`/periodo corto y aumentado gradualmente.

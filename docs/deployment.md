@@ -1,6 +1,6 @@
 # Despliegue
 
-Para AWS Pilot use el runbook específico. El deploy de main usa GitHub OIDC, ECR y SSM: migrator ejecuta `migrate`, `harden_database_roles` y `seed_system`; después se inicia la aplicación exclusivamente con `casaviva_app`, se ejecuta `check_production_readiness`, health y smoke tests. Un fallo conserva la imagen/release anterior para rollback. Nunca se usa SSH público ni claves AWS persistentes.
+Para AWS Pilot use [aws-pilot-runbook.md](aws-pilot-runbook.md), que es la fuente operativa principal. El primer install es privado mediante SSM; un deploy normal sólo expone Caddy después de readiness, health interno y DNS. CI publica imágenes ARM64 y un bundle operativo privado del mismo SHA; la EC2 verifica su checksum y conserva las versiones current/previous para rollback. Nunca se usa SSH público ni claves AWS persistentes.
 
 ## Desarrollo local
 
@@ -14,7 +14,7 @@ https://casaviva.mx/api/v1/   -> Django
 https://casaviva.mx/media/    -> storage/CDN autorizado
 ```
 
-1. Crear secretos fuera de Git y roles equivalentes a `docker/postgres/init-roles.sh`.
+1. Crear secretos fuera de Git. En Pilot se guardan componentes de contraseña en Parameter Store y se construyen URLs percent-encoded; no se guardan claves AWS.
 2. Conectar como `casaviva_migrator` y ejecutar `python backend/manage.py migrate`.
 3. Sin cambiar todavía de rol, ejecutar el comando idempotente y obligatorio `python backend/manage.py harden_database_roles`. Esto revoca `UPDATE/DELETE` de auditoría al rol de aplicación y fija los grants de readonly/backup.
 4. Conectar como `casaviva_app` y ejecutar `seed_system`. `seed_reference_catalog` es opcional. Ejecutar `bootstrap_founders` una sola vez.
@@ -30,4 +30,4 @@ El orden `migrate → harden_database_roles → seeds/bootstrap → run` forma p
 
 Comenzar con HSTS en `0`. Tras validar HTTPS avanzar, observando cada etapa, por `300`, `86400`, `604800` y finalmente `31536000`. Activar `includeSubDomains` sólo cuando todos los subdominios relevantes tengan HTTPS. No activar preload sin una decisión explícita posterior. Se persiste UTC y se muestra `America/Mexico_City`.
 
-`DATABASE_URL` es obligatorio en producción y `DB_SSL_REQUIRE=true` activa SSL sin acoplarse a proveedor. Si `STORAGE_BACKEND=s3`, bucket y credenciales son obligatorios. Con `AWS_QUERYSTRING_AUTH=False`, el bucket/CDN de `MediaAsset` público debe servir lectura pública segura. Los backups deben salir del mismo servidor o cuenta que aloja la aplicación.
+`APP_DATABASE_URL`, `MIGRATOR_DATABASE_URL` y `BACKUP_DATABASE_URL` tienen funciones separadas. `DB_SSL_REQUIRE=true` se usará al migrar a RDS. Si `STORAGE_BACKEND=s3`, el bucket sigue privado y boto3 obtiene credenciales temporales del Instance Profile mediante IMDSv2; no se configuran access keys ni lectura pública del bucket. CloudFront/OAC permanece opcional y apagado en Pilot.

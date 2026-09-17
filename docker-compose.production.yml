@@ -42,10 +42,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-  cloudwatch-agent:
-    image: amazon/cloudwatch-agent:latest
-    restart: unless-stopped
-    volumes: ["./docker/cloudwatch-agent.json:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json:ro", "/var/run/docker.sock:/var/run/docker.sock:ro", "/opt/casaviva:/opt/casaviva:ro"]
 volumes:
   caddy_data:
     name: casaviva_caddy_data

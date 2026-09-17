@@ -23,8 +23,8 @@ variable "instance_type" {
 resource "terraform_data" "guard" {
   lifecycle {
     precondition {
-      condition     = !var.enabled || var.database_external
-      error_message = "Growth requires PostgreSQL outside application nodes and explicit human approval."
+      condition     = !var.enabled
+      error_message = "Growth is future architecture and is NOT PRODUCTION READY; enabling it is intentionally blocked until its bootstrap and private-network endpoints are completed."
     }
   }
 }
@@ -117,7 +117,7 @@ resource "aws_launch_template" "app" {
   metadata_options {
     http_endpoint               = "enabled"
     http_tokens                 = "required"
-    http_put_response_hop_limit = 1
+    http_put_response_hop_limit = 2
   }
   tag_specifications {
     resource_type = "instance"

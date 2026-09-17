@@ -1,0 +1,13 @@
+https://localhost {
+  tls internal
+  encode zstd gzip
+  header {
+    X-Content-Type-Options nosniff
+    X-Frame-Options DENY
+    Referrer-Policy strict-origin-when-cross-origin
+    Content-Security-Policy "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; connect-src 'self' https://challenges.cloudflare.com; font-src 'self' data:; frame-src 'self' https://challenges.cloudflare.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'"
+  }
+  @api path /api/* /_technical-admin/* /static/* /media/*
+  handle @api { reverse_proxy backend:8000 }
+  handle { reverse_proxy frontend:3000 }
+}

@@ -28,6 +28,9 @@ export default defineConfig({
         DJANGO_SETTINGS_MODULE: "config.settings.postgres_test",
         POSTGRES_TEST_USER: "casaviva_app",
         POSTGRES_TEST_PASSWORD: "casaviva-app-test",
+        ANTIBOT_ENABLED: "true",
+        TURNSTILE_SECRET_KEY: "e2e-not-a-real-secret",
+        TURNSTILE_TEST_TOKEN: "e2e-valid-token",
       },
     },
     {
@@ -35,7 +38,13 @@ export default defineConfig({
       url: "http://127.0.0.1:3000",
       reuseExistingServer: false,
       timeout: 180_000,
-      env: { ...process.env, DJANGO_INTERNAL_URL: "http://127.0.0.1:8000" },
+      env: {
+        ...process.env,
+        DJANGO_INTERNAL_URL: "http://127.0.0.1:8000",
+        NEXT_PUBLIC_ANTIBOT_ENABLED: "true",
+        NEXT_PUBLIC_TURNSTILE_SITE_KEY: "1x00000000000000000000AA",
+        NEXT_PUBLIC_TURNSTILE_TEST_TOKEN: "e2e-valid-token",
+      },
     },
   ],
 });

@@ -36,6 +36,9 @@ class SiteSettings(BusinessModel):
     def __str__(self):
         return "Información de contacto de CasaViva"
 
+    class Meta:
+        permissions = [("manage_legal_identity", "Puede administrar la identidad legal de CasaViva")]
+
 
 class AboutContent(BusinessModel):
     key = models.CharField(max_length=40, unique=True, default="main")

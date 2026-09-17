@@ -27,6 +27,10 @@ resource "aws_ecr_lifecycle_policy" "this" {
 
       }
 
+      }, {
+      rulePriority = 2, description = "Keep the 30 newest immutable SHA images", selection = {
+        tagStatus = "tagged", tagPatternList = ["*"], countType = "imageCountMoreThan", countNumber = 30
+      }, action   = { type = "expire" }
     }]
 
   })

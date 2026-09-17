@@ -16,7 +16,7 @@ class StartSessionSerializer(serializers.Serializer):
         choices=["desktop", "tablet", "mobile"], required=False, allow_null=True,
     )
     consent_state = serializers.ChoiceField(
-        choices=["ESSENTIAL", "GRANTED", "DENIED"], required=False, default="ESSENTIAL",
+        choices=["SESSION_ANALYTICS", "LIMITED"], required=False, default="LIMITED",
     )
 
     def validate_visitor_id(self, value):
@@ -52,6 +52,8 @@ class EventSerializer(serializers.ModelSerializer):
         session = WebSession.objects.filter(pk=attrs["session_id"], visitor_id=attrs["visitor_id"]).first()
         if session is None:
             raise serializers.ValidationError({"session_id": "Sesión desconocida."})
+        if session.consent_state == "LIMITED":
+            raise serializers.ValidationError({"session_id": "La sesión eligió limitar la analítica."})
         supplied_lead = attrs.get("lead")
         if supplied_lead and session.lead_id and supplied_lead.pk != session.lead_id:
             raise serializers.ValidationError({"lead": "El cliente no corresponde a la sesión."})

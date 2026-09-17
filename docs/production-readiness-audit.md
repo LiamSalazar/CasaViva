@@ -1,4 +1,6 @@
-# Auditoría de preparación para producción
+# Auditoría histórica de preparación para producción
+
+> Estado archivado previo a la implementación Terraform/CI-CD. No describe la arquitectura vigente. Para el estado actual use `final-production-readiness-audit.md` y para operar Pilot use `aws-pilot-runbook.md`.
 
 Fecha de referencia: septiembre de 2026. Esta auditoría describe el estado encontrado antes de implementar la tarea maestra. CasaViva se evalúa como plataforma de promoción, captación y canalización operada por José Alfredo Salazar Hernández; no como propietaria, desarrolladora, vendedora jurídica ni financiadora.
 

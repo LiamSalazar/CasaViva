@@ -71,6 +71,7 @@ resource "aws_instance" "pilot" {
     deploy_script      = base64encode(file("${path.root}/../../../scripts/deploy-pilot.sh"))
     rollback_script    = base64encode(file("${path.root}/../../../scripts/rollback-pilot.sh"))
     backup_script      = base64encode(file("${path.root}/../../../scripts/backup-postgres-s3.sh"))
+    ops_installer      = base64encode(file("${path.root}/../../../scripts/install-ops-bundle.sh"))
     compose_file       = base64encode(file("${path.root}/../../../docker-compose.production.yml"))
     caddy_file         = base64encode(file("${path.root}/../../../docker/Caddyfile"))
     init_roles         = base64encode(file("${path.root}/../../../docker/postgres/init-roles.sh"))

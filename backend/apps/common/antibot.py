@@ -12,6 +12,10 @@ def verify_antibot(token, remote_ip=None):
         raise ValidationError({"antibot_token": "La protección antibot no está configurada."})
     if not token:
         raise ValidationError({"antibot_token": "Completa la verificación antibot."})
+    if settings.TURNSTILE_TEST_TOKEN:
+        if token == settings.TURNSTILE_TEST_TOKEN:
+            return
+        raise ValidationError({"antibot_token": "No fue posible validar la verificación antibot."})
     payload = {"secret": settings.TURNSTILE_SECRET_KEY, "response": token}
     if remote_ip:
         payload["remoteip"] = remote_ip

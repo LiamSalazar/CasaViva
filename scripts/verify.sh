@@ -105,6 +105,8 @@ npm run build
 npm audit --omit=dev
 "$backend_python" -m pip_audit -r backend/requirements/production.txt
 ./scripts/secret-scan.sh
+./scripts/test-ops-bundle.sh
+./scripts/rehearse-deployment-rollback.sh
 
 export POSTGRES_TEST_USER=casaviva_app
 export POSTGRES_TEST_PASSWORD=casaviva-app-test

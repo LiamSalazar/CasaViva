@@ -3,17 +3,29 @@ on:
   workflow_run:
     workflows: [CI]
     types: [completed]
-permissions: { id-token: write, contents: read }
+  workflow_dispatch:
+    inputs:
+      git_sha:
+        description: Full commit SHA already validated by CI
+        required: true
+permissions: { id-token: write, contents: read, actions: read }
 concurrency: { group: production, cancel-in-progress: false }
 jobs:
   deploy:
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     environment: production
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: "${{ github.event.workflow_run.head_sha }}"
+          ref: "${{ inputs.git_sha || github.event.workflow_run.head_sha }}"
+      - name: Require successful CI for the exact SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha='${{ inputs.git_sha || github.event.workflow_run.head_sha }}'
+          conclusion="$(gh run list --workflow CI --commit "$sha" --json conclusion --jq '.[0].conclusion // ""')"
+          test "$conclusion" = success || { echo "CI is not successful for $sha" >&2; exit 1; }
       - uses: aws-actions/configure-aws-credentials@v5
         with: { role-to-assume: "${{ vars.AWS_DEPLOY_ROLE_ARN }}", aws-region: mx-central-1 }
       - uses: aws-actions/amazon-ecr-login@v2
@@ -23,12 +35,20 @@ jobs:
         run: |
           account="$(aws sts get-caller-identity --query Account --output text)"
           registry="$account.dkr.ecr.mx-central-1.amazonaws.com"
-          sha='${{ github.event.workflow_run.head_sha }}'
+          sha='${{ inputs.git_sha || github.event.workflow_run.head_sha }}'
           docker buildx build --platform linux/arm64 -f docker/backend.Dockerfile -t "$registry/casaviva-backend:$sha" --push .
-          docker buildx build --platform linux/arm64 --build-arg MEDIA_REMOTE_HOSTNAME='${{ vars.MEDIA_REMOTE_HOSTNAME }}' -f docker/frontend.Dockerfile -t "$registry/casaviva-frontend:$sha" --push .
+          docker buildx build --platform linux/arm64 --build-arg MEDIA_REMOTE_HOSTNAME='${{ vars.MEDIA_REMOTE_HOSTNAME }}' --build-arg NEXT_PUBLIC_ANTIBOT_ENABLED='${{ vars.ANTIBOT_ENABLED }}' --build-arg NEXT_PUBLIC_TURNSTILE_SITE_KEY='${{ vars.TURNSTILE_SITE_KEY }}' -f docker/frontend.Dockerfile -t "$registry/casaviva-frontend:$sha" --push .
+      - name: Build and publish immutable private ops bundle
+        run: |
+          sha='${{ inputs.git_sha || github.event.workflow_run.head_sha }}'
+          ./scripts/build-ops-bundle.sh "$sha" dist
+          aws s3 cp "dist/casaviva-ops-$sha.tar.gz" "s3://${{ vars.OPS_BUCKET_NAME }}/ops/$sha/casaviva-ops-$sha.tar.gz" --only-show-errors
+          aws s3 cp "dist/casaviva-ops-$sha.tar.gz.sha256" "s3://${{ vars.OPS_BUCKET_NAME }}/ops/$sha/casaviva-ops-$sha.tar.gz.sha256" --only-show-errors
       - name: Deploy through SSM
         run: |
-          sha='${{ github.event.workflow_run.head_sha }}'
-          command_id="$(aws ssm send-command --instance-ids '${{ vars.PILOT_INSTANCE_ID }}' --document-name AWS-RunShellScript --parameters commands="sudo /opt/casaviva/bin/deploy.sh $sha" --query Command.CommandId --output text)"
+          sha='${{ inputs.git_sha || github.event.workflow_run.head_sha }}'
+          ops_uri="s3://${{ vars.OPS_BUCKET_NAME }}/ops/$sha"
+          remote="sudo /opt/casaviva/bin/install-ops-bundle.sh $sha $ops_uri && if sudo test -f /opt/casaviva/shared/bootstrap_release; then sudo /opt/casaviva/bin/deploy.sh $sha; else sudo /opt/casaviva/bin/first-install.sh $sha; fi"
+          command_id="$(aws ssm send-command --instance-ids '${{ vars.PILOT_INSTANCE_ID }}' --document-name AWS-RunShellScript --parameters commands="$remote" --query Command.CommandId --output text)"
           aws ssm wait command-executed --command-id "$command_id" --instance-id '${{ vars.PILOT_INSTANCE_ID }}'
           aws ssm get-command-invocation --command-id "$command_id" --instance-id '${{ vars.PILOT_INSTANCE_ID }}'

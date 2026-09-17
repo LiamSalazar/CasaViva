@@ -33,6 +33,9 @@ resource "aws_iam_role_policy" "app" {
       Effect = "Allow", Action = ["s3:PutObject", "s3:GetObject"], Resource = ["${var.backup_bucket_arn}/daily/*", "${var.backup_bucket_arn}/weekly/*", "${var.backup_bucket_arn}/monthly/*"]
 
       }, {
+      Effect = "Allow", Action = ["s3:GetObject"], Resource = ["${var.backup_bucket_arn}/ops/*"]
+
+      }, {
       Effect = "Allow", Action = ["ecr:GetAuthorizationToken"], Resource = "*"
 
       }, {

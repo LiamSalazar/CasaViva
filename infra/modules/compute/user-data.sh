@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 dnf install -y docker amazon-cloudwatch-agent jq
 systemctl enable --now docker amazon-ssm-agent
-install -d -m 0755 /opt/casaviva/{bin,config,releases,shared,logs}
+install -d -m 0755 /opt/casaviva/{bin,config,releases,ops-releases,shared,logs}
 install -d -m 0700 /opt/casaviva/postgres
 
 volume_id='${postgres_volume_id}'
@@ -24,6 +24,7 @@ chmod 700 /opt/casaviva/postgres
 printf '%s' '${deploy_script}' | base64 -d > /opt/casaviva/bin/deploy.sh
 printf '%s' '${rollback_script}' | base64 -d > /opt/casaviva/bin/rollback.sh
 printf '%s' '${backup_script}' | base64 -d > /opt/casaviva/bin/backup-postgres-s3.sh
+printf '%s' '${ops_installer}' | base64 -d > /opt/casaviva/bin/install-ops-bundle.sh
 printf '%s' '${compose_file}' | base64 -d > /opt/casaviva/config/docker-compose.production.yml
 printf '%s' '${caddy_file}' | base64 -d > /opt/casaviva/config/Caddyfile
 printf '%s' '${init_roles}' | base64 -d > /opt/casaviva/config/init-roles.sh
@@ -53,5 +54,6 @@ RandomizedDelaySec=15m
 WantedBy=timers.target
 UNIT
 systemctl daemon-reload
-systemctl enable --now casaviva-postgres-backup.timer
-systemctl enable --now amazon-cloudwatch-agent
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a fetch-config -m ec2 -c file:/opt/casaviva/config/cloudwatch-agent.json -s
+systemctl is-active --quiet amazon-cloudwatch-agent

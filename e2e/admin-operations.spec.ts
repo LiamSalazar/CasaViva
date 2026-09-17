@@ -69,7 +69,7 @@ test("CMS persiste el Hero y una guía pasa de borrador a pública con imagen", 
   test.setTimeout(90_000);
   const assertNoErrors = failOnPageErrors(page);
   await restoreAdminSession(page, "content@example.test");
-  await page.goto("/administracion/contenido");
+  await page.goto("/administracion/contenido/inicio");
   await page.getByLabel("Antetítulo").fill("Selección editorial E2E");
   await page.getByLabel("Título", { exact: true }).fill("Un hogar probado de extremo a extremo");
   await page.getByRole("button", { name: "Guardar contenido" }).click();
@@ -106,7 +106,7 @@ test("Founder actualiza redes y el sitio público refleja la configuración cent
   const assertNoErrors = failOnPageErrors(page);
   const instagram = "https://www.instagram.com/casaviva-e2e/";
   await restoreAdminSession(page, "content@example.test");
-  await page.goto("/administracion/contenido");
+  await page.goto("/administracion/contenido/inicio");
   await page.getByLabel("Instagram", { exact: true }).fill(instagram);
   await page.getByRole("button", { name: "Guardar información de contacto" }).click();
   await expect(page.getByText("Información de contacto guardada")).toBeVisible();

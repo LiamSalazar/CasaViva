@@ -28,6 +28,8 @@ def publish_legal_version(document, actor, request, permission):
     document = type(document).objects.select_for_update().get(pk=document.pk)
     if document.status != document.Status.DRAFT:
         raise ValidationError({"status": "Sólo puede publicarse un borrador."})
+    if not document.production_ready:
+        raise ValidationError({"production_ready": "Marca el documento como revisado y apto para producción antes de publicarlo."})
     if not document.title.strip() or not document.body.strip() or find_unresolved_legal_placeholders(document.body):
         raise ValidationError({"body": "Completa el documento y elimina todos los placeholders antes de publicarlo."})
     now = timezone.now()

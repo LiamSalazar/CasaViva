@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -18,6 +18,7 @@ import { inquiryService, useCasaViva } from "@/services";
 import { api, apiFetch } from "@/services/api";
 import type { Development, Guide, Inquiry, Property } from "@/types";
 import { ensureCurrentAnalyticsIdentity, trackEvent } from "@/components/analytics-provider";
+import { antibotIsEnabled, TurnstileWidget } from "@/components/turnstile-widget";
 
 export function DevelopmentsPage() {
   const { developments, properties } = useCasaViva();
@@ -543,12 +544,19 @@ export function ContactPage() {
   const { siteSettings } = useCasaViva();
   const { toast } = useToast();
   const [sent, setSent] = useState(false);
+  const [antibotToken, setAntibotToken] = useState("");
+  const [antibotReset, setAntibotReset] = useState(0);
+  const acceptAntibotToken = useCallback((token: string) => setAntibotToken(token), []);
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<ContactData>({ resolver: zodResolver(contactSchema), defaultValues: { subject: "", privacy: false } });
   const submit = async (d: ContactData) => {
+    if (antibotIsEnabled() && !antibotToken) {
+      toast("Completa la verificación de seguridad.");
+      return;
+    }
     const analyticsIdentity = await ensureCurrentAnalyticsIdentity();
     const item: Inquiry = {
       id: uid("inq"),
@@ -562,14 +570,17 @@ export function ContactPage() {
       sessionId: analyticsIdentity.sessionId,
       visitorId: analyticsIdentity.visitorId,
       privacyConsent: d.privacy,
+      antibotToken,
       status: "new",
     };
     try {
       await inquiryService.create(item);
       void trackEvent("contact_form_submitted", { source: "contact" }).catch(() => undefined);
       setSent(true);
+      setAntibotReset((value) => value + 1);
       toast("Consulta enviada");
     } catch {
+      setAntibotReset((value) => value + 1);
       toast("No pudimos enviar la consulta. Intenta nuevamente.");
     }
   };
@@ -627,7 +638,8 @@ export function ContactPage() {
                 <span>He leído el <Link href="/aviso-de-privacidad">Aviso de Privacidad</Link>.</span>
               </label>
               {errors.privacy && <small>{errors.privacy.message}</small>}
-              {siteSettings?.responsible_address && siteSettings?.privacy_email && <p className="form-privacy-notice">José Alfredo Salazar Hernández, responsable del sitio CasaViva, con domicilio en {siteSettings.responsible_address}, tratará los datos que proporciones para atender tu solicitud, dar seguimiento a tu interés inmobiliario, coordinar visitas cuando corresponda y medir internamente la atención brindada. Puedes limitar el uso de tus datos y ejercer tus derechos ARCO escribiendo a {siteSettings.privacy_email}. Consulta el <Link href="/aviso-de-privacidad">Aviso de Privacidad Integral</Link>.</p>}
+              <TurnstileWidget onToken={acceptAntibotToken} resetSignal={antibotReset} />
+              {siteSettings?.responsible_name && siteSettings?.responsible_address && siteSettings?.privacy_email && <p className="form-privacy-notice">{siteSettings.responsible_name}, responsable del sitio {siteSettings.brand_name || "CasaViva"}, con domicilio en {siteSettings.responsible_address}, tratará los datos que proporciones para atender tu solicitud, dar seguimiento a tu interés inmobiliario, coordinar visitas cuando corresponda y medir internamente la atención brindada. Puedes limitar el uso de tus datos y ejercer tus derechos ARCO escribiendo a {siteSettings.privacy_email}. Consulta el <Link href="/aviso-de-privacidad">Aviso de Privacidad Integral</Link>.</p>}
               <button className="button" type="submit" disabled={isSubmitting}>
                 Enviar mensaje
               </button>

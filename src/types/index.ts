@@ -101,14 +101,36 @@ export interface SiteSettings {
   contact_email: string;
   brand_name?: string;
   responsible_name?: string;
+  operator_type?: "PERSONA_FISICA";
+  commercial_role?: "EXTERNAL_PROMOTER";
   responsible_address?: string;
   privacy_email?: string;
   complaints_email?: string;
   contact_phone?: string;
   commercial_role_display?: string;
+  verification_warning_days?: number | null;
   facebook_url?: string | null;
   instagram_url?: string | null;
   tiktok_url?: string | null;
+  version?: number;
+}
+export interface AboutContent {
+  id?: string;
+  key: "main";
+  eyebrow: string;
+  hero_title: string;
+  hero_media?: string | null;
+  hero_media_url?: string | null;
+  main_title: string;
+  main_body: string;
+  what_we_do_title: string;
+  what_we_do_body: string;
+  how_we_work_title: string;
+  how_we_work_body: string;
+  vision_title: string;
+  vision_body: string;
+  cta_label: string;
+  cta_url: string;
   version?: number;
 }
 export interface SearchFacets {
@@ -201,6 +223,7 @@ export interface Inquiry {
   subject?: string;
   privacyConsent: boolean;
   transferConsent?: boolean;
+  antibotToken?: string;
   status: "new" | "viewed" | "attended";
 }
 

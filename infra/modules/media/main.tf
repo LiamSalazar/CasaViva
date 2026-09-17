@@ -119,6 +119,17 @@ resource "aws_s3_bucket_lifecycle_configuration" "backups" {
       days = 370
     }
   }
+  rule {
+    id     = "ops-bundle-retention"
+    status = "Enabled"
+    filter { prefix = "ops/" }
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+    expiration {
+      days = 180
+    }
+  }
 }
 resource "aws_cloudfront_origin_access_control" "media" {
   count                             = var.enable_cloudfront ? 1 : 0

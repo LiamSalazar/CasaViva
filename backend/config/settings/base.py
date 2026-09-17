@@ -163,6 +163,7 @@ MAX_IMAGE_BYTES = int(os.environ.get("MAX_IMAGE_BYTES", 10 * 1024 * 1024))
 ANTIBOT_ENABLED = os.environ.get("ANTIBOT_ENABLED", "false").lower() == "true"
 ANTIBOT_PROVIDER = os.environ.get("ANTIBOT_PROVIDER", "turnstile")
 TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY", "")
+TURNSTILE_TEST_TOKEN = os.environ.get("TURNSTILE_TEST_TOKEN", "") if DEBUG else ""
 LEAD_NOTIFICATION_BACKEND = os.environ.get("LEAD_NOTIFICATION_BACKEND", "django_email")
 LEAD_NOTIFICATION_EMAIL = os.environ.get("LEAD_NOTIFICATION_EMAIL", "")
 ANALYTICS_RETENTION_DAYS = int(os.environ["ANALYTICS_RETENTION_DAYS"]) if os.environ.get("ANALYTICS_RETENTION_DAYS") else None

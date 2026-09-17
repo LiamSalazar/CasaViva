@@ -8,6 +8,8 @@ test("UTM conserva atribución desde sesión hasta venta y BI", async ({ page })
   const email = "atribucion.e2e@example.test";
 
   await page.goto(`/?utm_source=instagram&utm_medium=paid_social&utm_campaign=${campaign}&utm_content=reel_04`);
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("casaviva-session-id"))).toBeNull();
+  await page.getByRole("button", { name: "Entendido" }).click();
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem("casaviva-session-id"))).toBeTruthy();
   const identity = await page.evaluate(() => ({
     sessionId: sessionStorage.getItem("casaviva-session-id"),
@@ -77,5 +79,18 @@ test("UTM conserva atribución desde sesión hasta venta y BI", async ({ page })
   const marketing = await marketingResponse.json();
   const row = marketing.campaigns.find((item: { utm_campaign: string }) => item.utm_campaign === campaign);
   expect(row).toMatchObject({ sessions: 1, inquiries: 1, completed_visits: 1, closed_sales: 1 });
+
+  await page.evaluate(() => {
+    sessionStorage.removeItem("casaviva-session-id");
+    sessionStorage.removeItem("casaviva-session-visitor-id");
+  });
+  await page.goto("/");
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("casaviva-session-id"))).toBeTruthy();
+  const newIdentity = await page.evaluate(() => ({
+    sessionId: sessionStorage.getItem("casaviva-session-id"),
+    visitorId: sessionStorage.getItem("casaviva-session-visitor-id"),
+  }));
+  expect(newIdentity.sessionId).not.toBe(identity.sessionId);
+  expect(newIdentity.visitorId).not.toBe(identity.visitorId);
   assertNoErrors();
 });

@@ -20,19 +20,19 @@ function analyticsPreference(): AnalyticsPreference | null {
 }
 
 export function ensureCurrentAnalyticsIdentity() {
-  if (analyticsPreference() === "limited") return Promise.resolve({ visitorId: undefined, sessionId: undefined });
+  if (analyticsPreference() !== "understood") return Promise.resolve({ visitorId: undefined, sessionId: undefined });
   const attribution = currentAttribution();
   return ensureAnalyticsIdentity((visitorId) =>
     apiFetch<{ visitor_id: string; session_id: string }>("/api/v1/public/analytics/session/", {
       method: "POST",
-      body: JSON.stringify({ visitor_id: visitorId, landing_path: `${location.pathname}${location.search}`, consent_state: "ESSENTIAL", ...attribution, referrer_domain: document.referrer ? new URL(document.referrer).hostname : null, device_category: window.innerWidth < 768 ? "mobile" : window.innerWidth < 1100 ? "tablet" : "desktop" }),
+      body: JSON.stringify({ visitor_id: visitorId, landing_path: `${location.pathname}${location.search}`, consent_state: "SESSION_ANALYTICS", ...attribution, referrer_domain: document.referrer ? new URL(document.referrer).hostname : null, device_category: window.innerWidth < 768 ? "mobile" : window.innerWidth < 1100 ? "tablet" : "desktop" }),
     }), attribution,
   );
 }
 
 export async function trackEvent(eventName: string, properties: Record<string, unknown> = {}, relations: Record<string, string | undefined> = {}) {
   if (typeof window === "undefined") return;
-  if (analyticsPreference() === "limited") return;
+  if (analyticsPreference() !== "understood") return;
   const { visitorId, sessionId } = await ensureCurrentAnalyticsIdentity();
   if (!visitorId || !sessionId) return;
   await apiFetch("/api/v1/public/analytics/events/", {
@@ -62,7 +62,7 @@ export function AnalyticsProvider() {
   }, []);
   useEffect(() => {
     if (pathname.startsWith("/administracion") || pathname.startsWith("/admin") || pathname.startsWith("/preview")) return;
-    if (preference === "limited") return;
+    if (preference !== "understood") return;
     let cancelled = false;
     const track = async () => {
       const identity = await ensureCurrentAnalyticsIdentity();

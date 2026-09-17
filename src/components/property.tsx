@@ -27,6 +27,7 @@ import {
 } from "@/lib/utils";
 import { FavoriteButton, ShareButton, useToast } from "@/components/ui";
 import { ensureCurrentAnalyticsIdentity, trackEvent } from "@/components/analytics-provider";
+import { antibotIsEnabled, TurnstileWidget } from "@/components/turnstile-widget";
 import { inquiryService, useCasaViva } from "@/services";
 
 export const DynamicMapView = dynamic(
@@ -407,6 +408,9 @@ export function PropertyContactCard({ property }: { property: Property }) {
   const { toast } = useToast();
   const { siteSettings } = useCasaViva();
   const [sent, setSent] = useState(false);
+  const [antibotToken, setAntibotToken] = useState("");
+  const [antibotReset, setAntibotReset] = useState(0);
+  const acceptAntibotToken = useCallback((token: string) => setAntibotToken(token), []);
   const {
     register,
     handleSubmit,
@@ -424,6 +428,10 @@ export function PropertyContactCard({ property }: { property: Property }) {
     data: InquiryForm,
     source: "property" | "visit" = "property",
   ) => {
+    if (antibotIsEnabled() && !antibotToken) {
+      toast("Completa la verificación de seguridad.");
+      return;
+    }
     const analyticsIdentity = await ensureCurrentAnalyticsIdentity();
     const item: Inquiry = {
       id: uid("inq"),
@@ -439,6 +447,7 @@ export function PropertyContactCard({ property }: { property: Property }) {
       visitorId: analyticsIdentity.visitorId,
       privacyConsent: data.privacy,
       transferConsent: data.transfer,
+      antibotToken,
       status: "new",
     };
     try {
@@ -446,8 +455,10 @@ export function PropertyContactCard({ property }: { property: Property }) {
       void trackEvent("contact_form_submitted", { source }, { listing: property.id, offering: property.offeringId }).catch(() => undefined);
       setSent(true);
       reset();
+      setAntibotReset((value) => value + 1);
       toast(source === "visit" ? "Solicitud de visita enviada" : "Consulta enviada");
     } catch {
+      setAntibotReset((value) => value + 1);
       toast("No pudimos enviar la consulta. Intenta nuevamente.");
     }
   };
@@ -500,7 +511,8 @@ export function PropertyContactCard({ property }: { property: Property }) {
           <span>Autorizo que CasaViva comparta mis datos de contacto y la información necesaria de mi solicitud con el desarrollador, propietario o proveedor correspondiente al inmueble de mi interés, exclusivamente para que pueda atender y dar seguimiento a mi solicitud.</span>
         </label>
         {errors.transfer && <small>{errors.transfer.message}</small>}
-        {siteSettings?.responsible_address && siteSettings?.privacy_email && <p className="form-privacy-notice">José Alfredo Salazar Hernández, responsable del sitio CasaViva, con domicilio en {siteSettings.responsible_address}, tratará los datos que proporciones para atender tu solicitud, dar seguimiento a tu interés inmobiliario, coordinar visitas cuando corresponda y medir internamente la atención brindada. Cuando sea necesario para atender una propiedad concreta, tus datos podrán ser canalizados al desarrollador, propietario o proveedor correspondiente. Puedes limitar el uso de tus datos y ejercer tus derechos ARCO escribiendo a {siteSettings.privacy_email}. Consulta el <Link href="/aviso-de-privacidad">Aviso de Privacidad Integral</Link>.</p>}
+        <TurnstileWidget onToken={acceptAntibotToken} resetSignal={antibotReset} />
+        {siteSettings?.responsible_name && siteSettings?.responsible_address && siteSettings?.privacy_email && <p className="form-privacy-notice">{siteSettings.responsible_name}, responsable del sitio {siteSettings.brand_name || "CasaViva"}, con domicilio en {siteSettings.responsible_address}, tratará los datos que proporciones para atender tu solicitud, dar seguimiento a tu interés inmobiliario, coordinar visitas cuando corresponda y medir internamente la atención brindada. Cuando sea necesario para atender una propiedad concreta, tus datos podrán ser canalizados al desarrollador, propietario o proveedor correspondiente. Puedes limitar el uso de tus datos y ejercer tus derechos ARCO escribiendo a {siteSettings.privacy_email}. Consulta el <Link href="/aviso-de-privacidad">Aviso de Privacidad Integral</Link>.</p>}
         <button disabled={isSubmitting} className="button" type="submit">
           Solicitar información
         </button>

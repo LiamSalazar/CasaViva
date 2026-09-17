@@ -23,14 +23,14 @@ def test_analytics_rejects_unknown_and_invalid_payload(client):
 def test_start_session_validates_uuid_lengths_enums_and_required_types(client):
     valid = client.post(
         "/api/v1/public/analytics/session/",
-        {"landing_path": "/?utm_campaign=agosto", "utm_source": "instagram", "utm_medium": "paid_social", "utm_campaign": "agosto", "utm_content": "reel_04", "device_category": "mobile", "consent_state": "ESSENTIAL"},
+        {"landing_path": "/?utm_campaign=agosto", "utm_source": "instagram", "utm_medium": "paid_social", "utm_campaign": "agosto", "utm_content": "reel_04", "device_category": "mobile", "consent_state": "SESSION_ANALYTICS"},
         format="json",
     )
     assert valid.status_code == 201, valid.data
     visitor_id = valid.data["visitor_id"]
-    assert client.post("/api/v1/public/analytics/session/", {"visitor_id": "not-a-uuid", "landing_path": "/", "consent_state": "ESSENTIAL"}, format="json").status_code == 400
-    assert client.post("/api/v1/public/analytics/session/", {"visitor_id": visitor_id, "landing_path": "/", "utm_source": "x" * 121, "consent_state": "ESSENTIAL"}, format="json").status_code == 400
-    assert client.post("/api/v1/public/analytics/session/", {"visitor_id": visitor_id, "landing_path": "/", "device_category": "watch", "consent_state": "ESSENTIAL"}, format="json").status_code == 400
+    assert client.post("/api/v1/public/analytics/session/", {"visitor_id": "not-a-uuid", "landing_path": "/", "consent_state": "SESSION_ANALYTICS"}, format="json").status_code == 400
+    assert client.post("/api/v1/public/analytics/session/", {"visitor_id": visitor_id, "landing_path": "/", "utm_source": "x" * 121, "consent_state": "SESSION_ANALYTICS"}, format="json").status_code == 400
+    assert client.post("/api/v1/public/analytics/session/", {"visitor_id": visitor_id, "landing_path": "/", "device_category": "watch", "consent_state": "SESSION_ANALYTICS"}, format="json").status_code == 400
     assert client.post("/api/v1/public/analytics/session/", {"visitor_id": visitor_id, "landing_path": "/", "consent_state": "UNKNOWN"}, format="json").status_code == 400
     assert client.post("/api/v1/public/analytics/session/", {"visitor_id": str(visitor_id), "landing_path": []}, content_type="application/json").status_code == 400
 
@@ -58,10 +58,31 @@ def test_start_session_is_throttled(client, monkeypatch):
 
     cache.clear()
     monkeypatch.setattr(AnalyticsThrottle, "THROTTLE_RATES", {"analytics": "1/min"})
-    first = client.post("/api/v1/public/analytics/session/", {"landing_path": "/", "consent_state": "ESSENTIAL"}, format="json")
-    second = client.post("/api/v1/public/analytics/session/", {"landing_path": "/", "consent_state": "ESSENTIAL"}, format="json")
+    first = client.post("/api/v1/public/analytics/session/", {"landing_path": "/", "consent_state": "SESSION_ANALYTICS"}, format="json")
+    second = client.post("/api/v1/public/analytics/session/", {"landing_path": "/", "consent_state": "SESSION_ANALYTICS"}, format="json")
     assert first.status_code == 201
     assert second.status_code == 429
+
+
+@pytest.mark.django_db
+def test_limited_session_rejects_analytics_events(client):
+    response = client.post(
+        "/api/v1/public/analytics/session/",
+        {"landing_path": "/", "consent_state": "LIMITED"},
+        format="json",
+    )
+    assert response.status_code == 201
+    payload = response.data
+    event = client.post(
+        "/api/v1/public/analytics/events/",
+        {
+            "occurred_at": timezone.now().isoformat(), "event_name": "page_viewed",
+            "schema_version": 1, "visitor_id": payload["visitor_id"],
+            "session_id": payload["session_id"], "page_path": "/", "properties": {},
+        },
+        format="json",
+    )
+    assert event.status_code == 400
 
 
 @pytest.mark.django_db

@@ -1,8 +1,13 @@
 import pytest
 
 from django.core.management import call_command
+from django.contrib.auth.models import Permission
+from django.utils import timezone
+from rest_framework.test import APIClient
 
-from apps.content.models import Guide, HomeContent, HomeHeroSlide, LocationContent, SiteSettings
+from apps.accounts.models import User
+from apps.audit.models import AuditEvent
+from apps.content.models import AboutContent, Guide, HomeContent, HomeHeroSlide, LocationContent, SiteSettings
 from apps.catalog.models import Amenity, Development, DevelopmentMedia
 from apps.geo.models import Locality, Neighborhood
 from apps.media_library.models import MediaAsset
@@ -81,6 +86,49 @@ def test_site_settings_seed_is_idempotent_editable_and_public_contract_is_minima
         "brand_name", "responsible_name", "operator_type", "commercial_role", "commercial_role_display",
         "contact_email", "facebook_url", "instagram_url", "tiktok_url",
     }
+
+
+@pytest.mark.django_db
+def test_site_settings_legal_identity_requires_sensitive_permission_and_audits(admin_client):
+    call_command("seed_system")
+    settings = SiteSettings.objects.get(key="main")
+    editor = User.objects.create_user(email="content-only@example.test", password="Safe-test-password!", is_staff=True)
+    editor.user_permissions.add(Permission.objects.get(content_type__app_label="content", codename="manage_content"))
+    client = APIClient(); client.force_login(editor)
+    session = client.session
+    session["mfa_verified"] = True; session["mfa_verified_at"] = timezone.now().isoformat(); session["authz_version"] = editor.authz_version
+    session.save()
+
+    denied = client.patch(
+        f"/api/v1/admin/site-settings/{settings.id}/",
+        {"version": settings.version, "responsible_address": "No autorizado"}, format="json",
+    )
+    assert denied.status_code == 403
+    settings.refresh_from_db()
+    assert settings.responsible_address == ""
+
+    allowed = admin_client.patch(
+        f"/api/v1/admin/site-settings/{settings.id}/",
+        {"version": settings.version, "responsible_address": "Domicilio confirmado"}, format="json",
+    )
+    assert allowed.status_code == 200
+    event = AuditEvent.objects.filter(entity_type="SiteSettings", entity_id=str(settings.id), action="UPDATE").latest("occurred_at")
+    assert event.old_values["responsible_address"] == ""
+    assert event.new_values["responsible_address"] == "Domicilio confirmado"
+
+
+@pytest.mark.django_db
+def test_about_admin_edit_is_audited_and_public(admin_client):
+    call_command("seed_system")
+    about = AboutContent.objects.get(key="main")
+    response = admin_client.patch(
+        f"/api/v1/admin/about/{about.id}/",
+        {"version": about.version, "hero_title": "Nosotros desde administración"}, format="json",
+    )
+    assert response.status_code == 200
+    assert admin_client.get("/api/v1/public/about/").data["results"][0]["hero_title"] == "Nosotros desde administración"
+    event = AuditEvent.objects.filter(entity_type="AboutContent", entity_id=str(about.id), action="UPDATE").latest("occurred_at")
+    assert event.old_values["hero_title"] != event.new_values["hero_title"]
 
 
 @pytest.mark.django_db
