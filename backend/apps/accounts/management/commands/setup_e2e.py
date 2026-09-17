@@ -2,6 +2,7 @@ import os
 from base64 import b64decode
 
 from django.conf import settings
+from django.contrib.auth.models import Group
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.core.management.base import BaseCommand, CommandError
@@ -38,9 +39,11 @@ class Command(BaseCommand):
             ("catalog@example.test", "Catálogo", False, founder),
             ("marketing@example.test", "Marketing", False, founder),
             ("content@example.test", "Contenido", False, founder),
+            ("content-limited@example.test", "Contenido limitado", False, None),
             ("geo@example.test", "Geo", False, founder),
             ("mfa@example.test", "MFA", False, founder),
         ]
+        content_group = Group.objects.get(name="Contenido")
         for email, first_name, is_owner, group in fixtures:
             user, _ = User.objects.get_or_create(email=email, defaults={"first_name": first_name})
             user.first_name = first_name
@@ -49,7 +52,7 @@ class Command(BaseCommand):
             user.is_superuser = is_owner
             user.set_password(password)
             user.save()
-            user.groups.set([group])
+            user.groups.set([content_group if group is None else group])
             TOTPDevice.objects.filter(user=user).delete()
             TOTPDevice.objects.create(user=user, name="Playwright", key=totp_secret, confirmed=True)
         owner_user = User.objects.get(email="liam@example.test")

@@ -80,6 +80,7 @@ test("propiedad particular conserva campos, precio, publicación, consulta, arch
   await page.getByLabel("Teléfono").fill("5512345678");
   await page.getByLabel("He leído el Aviso de Privacidad.", { exact: true }).check();
   await page.getByLabel(/Autorizo que CasaViva comparta mis datos/).check();
+  await expect(page.getByTestId("turnstile-widget")).toBeVisible();
   await page.getByRole("button", { name: "Solicitar información" }).click();
   await expect(page.getByRole("heading", { name: "Gracias por escribirnos." })).toBeVisible();
 

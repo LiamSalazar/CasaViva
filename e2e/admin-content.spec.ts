@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { failOnPageErrors, restoreAdminSession } from "./helpers";
 
 test("administración edita Nosotros y la página pública refleja el cambio", async ({ page }) => {
-  const assertNoErrors = failOnPageErrors(page);
+  const assertNoErrors = failOnPageErrors(page, [/net::ERR_NETWORK_IO_SUSPENDED/]);
   await restoreAdminSession(page, "content@example.test");
   await page.goto("/administracion/contenido/nosotros");
   const title = page.getByLabel("Título principal");
@@ -22,10 +22,10 @@ test("administración edita Nosotros y la página pública refleja el cambio", a
 
 test("identidad legal exige permiso sensible y audita edición autorizada", async ({ page }) => {
   const assertNoErrors = failOnPageErrors(page);
-  await restoreAdminSession(page, "content@example.test");
+  await restoreAdminSession(page, "content-limited@example.test");
   await page.goto("/administracion/contenido/identidad");
   await expect(page.getByText("Tu rol puede consultar estos datos")).toBeVisible();
-  await expect(page.getByLabel("Responsable")).toBeDisabled();
+  await expect(page.getByLabel("Responsable", { exact: true })).toBeDisabled();
 
   await page.context().clearCookies();
   await restoreAdminSession(page, "liam@example.test");

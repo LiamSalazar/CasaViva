@@ -64,7 +64,22 @@ export const useCasaVivaStore = create<CasaVivaState>()(
         }
       },
       refreshAdmin: async () => {
-        const [properties, developments, inquiries, publicLocations, locationContent, guides] = await Promise.all([api.adminListings(), api.adminDevelopments(), fetchAllPages<any>("/api/v1/admin/inquiries/?page_size=100"), api.locations(), api.adminLocationContents(), fetchAllPages<any>("/api/v1/admin/guides/?page_size=100")]);
+        const permitted = async <T,>(request: Promise<T>, fallback: T): Promise<T> => {
+          try {
+            return await request;
+          } catch (error) {
+            if ((error as Error & { status?: number }).status === 403) return fallback;
+            throw error;
+          }
+        };
+        const [properties, developments, inquiries, publicLocations, locationContent, guides] = await Promise.all([
+          permitted(api.adminListings(), []),
+          permitted(api.adminDevelopments(), []),
+          permitted(fetchAllPages<any>("/api/v1/admin/inquiries/?page_size=100"), []),
+          api.locations(),
+          permitted(api.adminLocationContents(), []),
+          permitted(fetchAllPages<any>("/api/v1/admin/guides/?page_size=100"), []),
+        ]);
         const locations = publicLocations.map((location) => {
           const content = locationContent.find((item) => item.municipality === location.id);
           return content ? { ...location, slug: content.slug, description: content.description || "", heroImage: content.heroImage || location.heroImage, featured: content.is_featured, latitude: optionalNumber(content.latitude), longitude: optionalNumber(content.longitude), contentId: content.id, contentVersion: content.version, heroMediaId: content.hero_media || undefined, hasContent: !content.archived_at, archivedAt: content.archived_at || undefined } : location;

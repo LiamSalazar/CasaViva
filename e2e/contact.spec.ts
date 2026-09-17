@@ -4,6 +4,7 @@ import { failOnPageErrors, restoreAdminSession } from "./helpers";
 test("contacto exige consentimiento y conserva motivo, sesión y campaña", async ({ page }) => {
   const assertNoErrors = failOnPageErrors(page);
   await page.goto("/contacto?utm_source=google&utm_medium=cpc&utm_campaign=contacto_e2e");
+  await page.getByRole("button", { name: "Entendido" }).click();
   await page.getByLabel("Nombre").fill("Contacto General E2E");
   await page.getByLabel("Correo").fill("contacto.general@example.test");
   await page.getByLabel("Motivo").selectOption("SEARCH_ASSISTANCE");
@@ -25,6 +26,7 @@ test("contacto exige consentimiento y conserva motivo, sesión y campaña", asyn
 
 test("la identidad analítica sólo vive en la sesión de la pestaña", async ({ browser, page }) => {
   await page.goto("/?utm_source=google&utm_medium=cpc&utm_campaign=campaign_a");
+  await page.getByRole("button", { name: "Entendido" }).click();
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem("casaviva-session-id"))).toBeTruthy();
   const first = await page.evaluate(() => ({
     session: sessionStorage.getItem("casaviva-session-id"),

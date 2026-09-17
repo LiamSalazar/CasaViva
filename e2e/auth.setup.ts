@@ -10,6 +10,7 @@ const users = [
   "catalog@example.test",
   "marketing@example.test",
   "content@example.test",
+  "content-limited@example.test",
   "geo@example.test",
 ];
 

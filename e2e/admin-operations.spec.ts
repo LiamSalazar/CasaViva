@@ -3,7 +3,7 @@ import { failOnPageErrors, restoreAdminSession } from "./helpers";
 
 test("Founder administra campaña y gasto sin borrar historia", async ({ page }) => {
   const assertNoErrors = failOnPageErrors(page);
-  const campaign = "Campaña operativa E2E";
+  const campaign = `Campaña operativa E2E ${Date.now()}`;
   await restoreAdminSession(page, "marketing@example.test");
   await page.goto("/administracion/marketing");
 

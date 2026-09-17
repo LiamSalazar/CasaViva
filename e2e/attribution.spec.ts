@@ -24,6 +24,7 @@ test("UTM conserva atribución desde sesión hasta venta y BI", async ({ page })
   await page.getByLabel("Teléfono").fill("5511112233");
   await page.getByLabel("He leído el Aviso de Privacidad.", { exact: true }).check();
   await page.getByLabel(/Autorizo que CasaViva comparta mis datos/).check();
+  await expect(page.getByTestId("turnstile-widget")).toBeVisible();
   await page.getByRole("button", { name: "Solicitar información" }).click();
   await expect(page.getByRole("heading", { name: "Gracias por escribirnos." })).toBeVisible();
 
