@@ -46,7 +46,7 @@ Las contraseñas de base se almacenan como componentes. `render-pilot-env.py` co
 Crear el registro A del dominio hacia la EIP. Confirmar antes del despliegue público:
 
 ```bash
-./scripts/wait-for-dns.sh casaviva.mx EIP_ESPERADA 600
+./scripts/wait-for-dns.sh casaviva-hogar.com EIP_ESPERADA 600
 ```
 
 Si aún no coincide, el resultado correcto es `DNS_NOT_READY`; Caddy público no se inicia.

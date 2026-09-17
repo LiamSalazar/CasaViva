@@ -9,9 +9,9 @@ El flujo breve y los comandos mantenidos están al inicio de `README.md`. Usa Po
 ## Producción
 
 ```text
-https://casaviva.mx/          -> Next.js
-https://casaviva.mx/api/v1/   -> Django
-https://casaviva.mx/media/    -> storage/CDN autorizado
+https://casaviva-hogar.com/          -> Next.js
+https://casaviva-hogar.com/api/v1/   -> Django
+https://casaviva-hogar.com/media/    -> storage/CDN autorizado
 ```
 
 1. Crear secretos fuera de Git. En Pilot se guardan componentes de contraseña en Parameter Store y se construyen URLs percent-encoded; no se guardan claves AWS.
