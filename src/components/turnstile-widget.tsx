@@ -1,7 +1,7 @@
 "use client";
 
 import Script from "next/script";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 
 declare global {
   interface Window {
@@ -27,7 +27,7 @@ export function TurnstileWidget({ onToken, resetSignal }: { onToken: (token: str
   const widgetId = useRef<string | undefined>(undefined);
   const [scriptReady, setScriptReady] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!enabled) return;
     if (testToken) {
       onToken(testToken);
