@@ -640,7 +640,7 @@ export function ContactPage() {
               {errors.privacy && <small>{errors.privacy.message}</small>}
               <TurnstileWidget onToken={acceptAntibotToken} resetSignal={antibotReset} />
               {siteSettings?.responsible_name && siteSettings?.responsible_address && siteSettings?.privacy_email && <p className="form-privacy-notice">{siteSettings.responsible_name}, responsable del sitio {siteSettings.brand_name || "CasaViva"}, con domicilio en {siteSettings.responsible_address}, tratará los datos que proporciones para atender tu solicitud, dar seguimiento a tu interés inmobiliario, coordinar visitas cuando corresponda y medir internamente la atención brindada. Puedes limitar el uso de tus datos y ejercer tus derechos ARCO escribiendo a {siteSettings.privacy_email}. Consulta el <Link href="/aviso-de-privacidad">Aviso de Privacidad Integral</Link>.</p>}
-              <button className="button" type="submit" disabled={isSubmitting}>
+              <button className="button" type="submit" disabled={isSubmitting || (antibotIsEnabled() && !antibotToken)}>
                 Enviar mensaje
               </button>
             </form>

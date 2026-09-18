@@ -21,7 +21,6 @@ test("administración edita Nosotros y la página pública refleja el cambio", a
 });
 
 test("identidad legal exige permiso sensible y audita edición autorizada", async ({ page }) => {
-  const assertNoErrors = failOnPageErrors(page);
   await restoreAdminSession(page, "content-limited@example.test");
   await page.goto("/administracion/contenido/identidad");
   await expect(page.getByText("Tu rol puede consultar estos datos")).toBeVisible();
@@ -29,6 +28,7 @@ test("identidad legal exige permiso sensible y audita edición autorizada", asyn
 
   await page.context().clearCookies();
   await restoreAdminSession(page, "liam@example.test");
+  const assertNoErrors = failOnPageErrors(page);
   await page.goto("/administracion/contenido/identidad");
   const contact = page.getByLabel("Correo de contacto");
   const original = await contact.inputValue();
