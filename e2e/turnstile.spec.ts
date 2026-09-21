@@ -31,7 +31,7 @@ for (const [label, replacement] of [["inválido", "invalid-token"], ["ausente", 
       payload.antibot_token = replacement;
       await route.continue({ postData: JSON.stringify(payload), headers: { ...route.request().headers(), "content-type": "application/json" } });
     });
-    await fillContact(page, label);
+    await fillContact(page, label === "inválido" ? "invalid" : label);
     await page.getByRole("button", { name: "Enviar mensaje" }).click();
     await expect(page.getByText("No pudimos enviar la consulta. Intenta nuevamente.")).toBeVisible();
   });

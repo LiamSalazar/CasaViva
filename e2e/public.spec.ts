@@ -27,7 +27,14 @@ test("home, catálogo dinámico, paginación, detalle y favorito usan el sistema
   await expect(page.getByRole("heading", { name: "Dúplex E2E 1" })).toBeVisible();
   const favorite = page.getByRole("button", { name: /favorito/i }).first();
   await favorite.click();
+  const favoritesNavigation = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.status() === 200
+      && url.pathname === "/favoritos"
+      && url.searchParams.has("_rsc");
+  });
   await page.getByRole("link", { name: "Favoritos", exact: true }).click();
+  await favoritesNavigation;
   await expect(page).toHaveURL(/\/favoritos$/);
   await expect(page.getByRole("heading", { name: "Favoritos", exact: true })).toBeVisible();
   await expect(page.locator('a[href="/propiedades/duplex-e2e-1"]')).toBeVisible();

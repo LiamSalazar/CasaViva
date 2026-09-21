@@ -5,6 +5,19 @@ from pathlib import Path
 from .test import *  # noqa: F403
 
 DEBUG = True
+# ``base`` derives this value while its production-safe DEBUG=False default is
+# still in effect.  Re-evaluate it after enabling the dedicated test settings.
+TURNSTILE_TEST_TOKEN = os.environ.get("TURNSTILE_TEST_TOKEN", "")
+if os.environ.get("CASAVIVA_E2E") == "1":
+    REST_FRAMEWORK = {
+        **REST_FRAMEWORK,  # noqa: F405
+        "DEFAULT_THROTTLE_RATES": {
+            **REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"],  # noqa: F405
+            "login": "60/min",
+            "mfa": "60/min",
+            "inquiry": "60/hour",
+        },
+    }
 database_name = os.environ.get("POSTGRES_TEST_DB", "casaviva_test")
 if "test" not in database_name.lower():
     raise RuntimeError("POSTGRES_TEST_DB debe contener 'test'; se rechazó una base potencialmente real.")

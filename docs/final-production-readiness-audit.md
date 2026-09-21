@@ -1,28 +1,28 @@
 # Auditoría final de preparación para producción
 
-Fecha de última ejecución: 2026-09-16. Base de esta iteración: `7d2181a`. Un estado sólo cambia a DONE con prueba o inspección verificable; las comprobaciones que requieren servicios AWS permanecen bloqueadas hasta el rehearsal real.
+Fecha de evidencia local: 2026-09-20. Un estado sólo cambia a `DONE` con una
+prueba o inspección verificable. Las operaciones que requieren AWS permanecen
+bloqueadas hasta el preflight, plan y rehearsal reales.
 
-| ID | Severidad | Subsistema | Problema | Evidencia | Corrección | Test | Estado |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| DB-01 | P0 | PostgreSQL | PGDATA/mount ambiguo en 18 | Compose montaba `/var/lib/postgresql/data` | PGDATA 18 explícito y montaje del padre | `verify.sh`: first boot y persistencia PostgreSQL 18 | DONE |
-| DB-02 | P0 | Credenciales | Runtime/migrator compartían entorno | deploy usaba `DATABASE_URL` implícita | APP/MIGRATOR/BACKUP URLs y `current_user` | roles PostgreSQL + deploy inspection | DONE |
-| DEP-01 | P0 | First boot | Dependía de `/opt/casaviva/source` | script anterior hacía `cp` desde source | user-data instala bin/config/estructura completa | Terraform validate | DONE |
-| DEP-02 | P0 | Deploy/rollback | Recuperación incompleta tras migraciones | `set -e` podía abandonar candidato | trap post-migration, metadata app/ops y rollback sin revertir DB | `rehearse-deployment-rollback.sh`: fallo B y rollback manual | DONE |
-| DEP-03 | P0 | First install | Readiness exigía datos que una base nueva aún no puede tener | secuencia deploy/readiness | bootstrap TLS privado por loopback+SSM; normal deploy conserva readiness estricto | test readiness FAIL→PASS + inspección script | DONE |
-| AWS-01 | P0 | Datos | PostgreSQL vivía en root EBS | compute sólo definía root | EBS gp3 cifrado separado y montaje por UUID | Terraform validate/plan | EN PRUEBA |
-| BAK-01 | P0 | Backups | Script sin timer/checksum/retención válida | lifecycle global 90 días | timer, checksum, daily/weekly/monthly 15/60/370 | restore aislado | EN PRUEBA |
-| CI-01 | P0 | CI/CD | CI no creaba `.venv`; CD podía dispararse manualmente sin un CI asociado | workflows inspeccionados | venv, SHA ancestro de main, CI exitoso exacto, QEMU/Buildx ARM64 y OIDC limitado a `repo:LiamSalazar/CasaViva:environment:production` | Terraform validate local PASS; run remoto nuevo pendiente de push y verificación de Environment | EN PRUEBA |
-| APP-01 | P0 | Listings | Edición publicada omitía invariantes | relation cache y transición solamente | validación del agregado actualizado + filtro defensivo público | tres regresiones requeridas | EN PRUEBA |
-| LEG-01 | P0 | Legal | Cualquier corchete bloqueaba Markdown | `legal_services.py` | placeholders explícitos | unit test | EN PRUEBA |
-| LEG-02 | P0 | Readiness legal | Legacy podía satisfacer check | query sólo PUBLISHED/active | `production_ready` explícito + hash/fechas/contenido | migration/tests | EN PRUEBA |
-| API-01 | P1 | Legal pública | Serializer administrativo público | hashes/IDs/actor expuestos | serializer público mínimo | API test | EN PRUEBA |
-| CSP-01 | P0 | Caddy/Next | `script-src 'self'` rompe hidratación inline | Caddyfile | CSP Pilot compatible sin unsafe-eval | Playwright/Caddy | EN PRUEBA |
-| ENV-01 | P0 | Verificación | Suite del run CI #2 tenía fallos E2E deterministas | traces adjuntos y primera reproducción: 23 pass/8 fail | selectores/consentimientos vigentes, fixtures publicables, identidad session-only y storageState MFA por usuario | `./scripts/verify.sh`: unit 176 pass, PostgreSQL 180 pass, Playwright 31 pass | DONE |
-| TF-01 | P0 | Terraform/Checkov | CKV_AWS_300 y CKV_AWS_189; CKV_AWS_126 incompatible con objetivo de costo Pilot | Checkov del run CI #2 | abort multipart 7 días, CMK rotada `alias/casaviva-pilot`, EBS cifrados; skip motivado sólo para detailed monitoring | fmt/validate/tflint y Checkov 112 pass, 0 fail | DONE |
-| OPS-01 | P0 | Backup runtime | timer referenciaba `backup.env` antes de materializarlo | user-data + deploy | first/deploy crean 0600, habilitan/verifican timer; verificador EC2 dedicado | local estructural DONE; systemd real requiere AWS | BLOCKED — REQUIRES AWS PILOT REHEARSAL |
-| OPS-02 | P0 | Rollback | Fallos post-migration podían salir sin recuperación | inspección del script | trap deliberado cubre arranque/health/Caddy/HTTPS | rehearsal local A/B/rollback | DONE |
-| OPS-03 | P0 | Ops bundle | EC2 existente no recibía scripts/config nuevos | `user_data_replace_on_change=false` | tarball por SHA, checksum, S3 privado, instalación atómica y current/previous | `test-ops-bundle.sh` | DONE |
-| TLS-01 | P0 | DNS/TLS first install | HTTPS público se exigía antes de DNS | deploy + runbook | health interno, wait DNS acotado y Caddy público sólo después | DNS rehearsal local; TLS real requiere AWS | BLOCKED — REQUIRES AWS PILOT REHEARSAL |
-| UI-01 | P0/P1 | About/SiteSettings | Faltaban editores administrativos completos | inspección rutas/componentes | Nosotros + media; Identidad/contacto con permiso sensible y before/after audit | backend tests verdes; E2E completo pendiente de suite final | EN PRUEBA |
-| BOT-01 | P0/P1 | Turnstile | El frontend no cargaba ni enviaba/reiniciaba token | `rg` frontend/backend | widget reusable, build-time public config y mock sin red | unit 4 estados; E2E pendiente de suite final | EN PRUEBA |
-| ANA-01 | P1 | Analítica | Eventos antes de elección y estado `ESSENTIAL` incorrecto | provider/serializer | no tracking previo o LIMITED; `SESSION_ANALYTICS` tras aceptación; migración histórica | backend + E2E preferencia pendientes de suite final | EN PRUEBA |
+| ID | Severidad | Subsistema | Corrección/evidencia | Estado |
+| --- | --- | --- | --- | --- |
+| PHASE-A | P0 | Verificación integral | `./scripts/verify.sh` terminó `CASAVIVA_VERIFY_EXIT=0`; backend coverage 188 passed/5 skipped (86.44%), PostgreSQL 191 passed/2 skipped y Playwright 38/38 PASS, sin `error-context.md`. | DONE |
+| E2E-01 | P0 | Turnstile público | Settings de prueba reevalúan el token sólo bajo la base aislada; válido POST→201→confirmación e inválido POST→400→rechazo. No se aceptan tokens ausentes ni se relaja producción. | DONE |
+| E2E-02 | P0 | Estado E2E | Throttles elevados únicamente con `CASAVIVA_E2E=1` en `casaviva_test`; fixtures de login/inquiry ya no dependen de residuos entre intentos. | DONE |
+| E2E-03 | P1 | Navegación RSC | Admin y Favoritos esperan su respuesta RSC 200 antes de URL/contenido. Traces confirmaron handler, 200 y render correcto; Fast Refresh de Next dev difería el commit de URL. | DONE |
+| AUTH-01 | P0 | Hidratación de login | El helper espera hidratación React; los formularios tienen `method=post` como fallback para impedir que un submit nativo exponga credenciales en URL. | DONE |
+| DB-01 | P0 | PostgreSQL | Persistencia verificada a través de first boot, restart, down/up y recreación. Backup checksum y restore se probaron únicamente sobre PostgreSQL aislado. | DONE |
+| OPS-01 | P0 | Despliegue/rollback | Bundle checksum/current-previous, fallo de candidato y rollback manual verificados localmente; las migraciones no se revierten. | DONE |
+| TF-01 | P0 | Terraform | `fmt -check`, validate de bootstrap/Pilot y tflint PASS; Checkov 112 passed, 0 failed, 4 skips documentados (KMS policy grammar y monitoring básico Pilot). | DONE |
+| CI-01 | P0 | CI/CD | Debe validarse CI remoto para el SHA exacto que se publique. | PENDIENTE |
+| AWS-01 | P0 | Cuenta, DNS y state remoto | Faltan identidad perfil `casaviva-deploy`, región, Route53/hosted zone, recursos existentes y backend Terraform. | PENDIENTE |
+| PLAN-01 | P0 | Plan Terraform | Falta plan real bootstrap/Pilot y revisión de create/change/destroy, ausencia de NAT/RDS/ALB/ECS/Growth y costo. | PENDIENTE |
+| OPS-02 | P0 | Pilot real | IMDSv2/IAM, S3, systemd, KMS/EBS, SSM y DNS/TLS públicos requieren rehearsal AWS. | BLOCKED — REQUIRES AWS PILOT REHEARSAL |
+
+## Restricciones mantenidas
+
+- Pilot se limita a EC2 ARM64, EBS cifrado para PostgreSQL, S3 privado, ECR,
+  IAM/OIDC, SSM, CloudWatch y Budget; no crea NAT Gateway, RDS, ALB, ECS ni
+  Growth.
+- Ningún secreto AWS ni `tfvars` con secretos se guarda en el repositorio.
+- No se ejecutó Terraform apply ni se cambió DNS.

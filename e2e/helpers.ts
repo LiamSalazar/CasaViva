@@ -40,6 +40,10 @@ export async function loginAdmin(page: Page, email = "liam@example.test") {
   const secret = process.env.E2E_TOTP_SECRET;
   if (!password || !secret) throw new Error("Faltan credenciales temporales E2E.");
   await page.goto("/administracion/acceso");
+  await page.waitForFunction(() => {
+    const form = document.querySelector("form");
+    return form != null && Object.keys(form).some((key) => key.startsWith("__reactProps$"));
+  });
   await page.getByLabel("Correo").fill(email);
   await page.getByLabel("Contraseña").fill(password);
   await page.getByRole("button", { name: "Entrar" }).click();

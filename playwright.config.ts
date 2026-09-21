@@ -34,8 +34,11 @@ export default defineConfig({
       },
     },
     {
+      // The readiness request compiles the route exercised by the admin CRUD
+      // scenario before Playwright starts. Keeping `next dev --webpack` is
+      // intentional: the public suite relies on its non-prerendered E2E flow.
       command: "NEXT_PUBLIC_ANTIBOT_ENABLED=true NEXT_PUBLIC_TURNSTILE_SITE_KEY=1x00000000000000000000AA NEXT_PUBLIC_TURNSTILE_TEST_TOKEN=e2e-valid-token npm run dev -- --webpack --hostname 127.0.0.1 --port 3000",
-      url: "http://127.0.0.1:3000",
+      url: "http://127.0.0.1:3000/administracion/propiedades/nueva",
       reuseExistingServer: false,
       timeout: 180_000,
       env: {

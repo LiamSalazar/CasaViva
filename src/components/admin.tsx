@@ -217,7 +217,7 @@ export function AdminLoginPage() {
           <CasaVivaLogo />
           <h1>Administración</h1>
           <p className="muted">Gestiona propiedades, clientes, contenido y resultados.</p>
-          {stage === "credentials" ? <form key="credentials" onSubmit={handleSubmit(submit)}>
+          {stage === "credentials" ? <form key="credentials" method="post" onSubmit={handleSubmit(submit)}>
             <label className="field">
               <span>Correo</span>
               <input type="email" {...register("email")} />
@@ -230,7 +230,7 @@ export function AdminLoginPage() {
             <button className="button" type="submit">
               Entrar
             </button>
-          </form> : recoveryCodes.length ? <div className="recovery-codes"><h2>Códigos de recuperación</h2><p>Guárdalos ahora en un lugar seguro. No volverán a mostrarse.</p>{recoveryCodes.map((x) => <code key={x}>{x}</code>)}<button className="button" onClick={() => { login(); router.push("/administracion"); }}>Continuar</button></div> : <form key="mfa" onSubmit={verify}>{qr && <><p>Escanea este código con tu aplicación de autenticación.</p><Image src={qr} alt="Código de configuración MFA" width={220} height={220} unoptimized /></>}<label className="field"><span>Código de seguridad</span><input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} /></label>{invalid && <small>{invalid}</small>}<button className="button" type="submit">Verificar</button></form>}
+          </form> : recoveryCodes.length ? <div className="recovery-codes"><h2>Códigos de recuperación</h2><p>Guárdalos ahora en un lugar seguro. No volverán a mostrarse.</p>{recoveryCodes.map((x) => <code key={x}>{x}</code>)}<button className="button" onClick={() => { login(); router.push("/administracion"); }}>Continuar</button></div> : <form key="mfa" method="post" onSubmit={verify}>{qr && <><p>Escanea este código con tu aplicación de autenticación.</p><Image src={qr} alt="Código de configuración MFA" width={220} height={220} unoptimized /></>}<label className="field"><span>Código de seguridad</span><input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} /></label>{invalid && <small>{invalid}</small>}<button className="button" type="submit">Verificar</button></form>}
         </div>
       </div>
     </div>
