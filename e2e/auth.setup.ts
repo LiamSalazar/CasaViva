@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { test as setup } from "@playwright/test";
-import { loginAdmin, storageStatePath } from "./helpers";
+import { createAdminStorageState } from "./helpers";
 
 const users = [
   "liam@example.test",
@@ -17,8 +17,7 @@ const users = [
 setup.beforeAll(async () => mkdir("playwright/.auth", { recursive: true }));
 
 for (const email of users) {
-  setup(`autentica ${email}`, async ({ page }) => {
-    await loginAdmin(page, email);
-    await page.context().storageState({ path: storageStatePath(email) });
+  setup(`autentica ${email}`, async ({ request }) => {
+    await createAdminStorageState(request, email);
   });
 }
