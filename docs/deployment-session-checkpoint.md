@@ -2,14 +2,14 @@
 
 This handoff record contains no credentials or secret values.
 
-## Phase A — local verification — 2026-09-20
+## Phase A — local verification — 2026-09-21
 
 **PASS**
 
-- `./scripts/verify.sh` completed with `CASAVIVA_VERIFY_EXIT=0`. Evidence:
-  backend coverage `188 passed, 5 skipped` (86.44%), PostgreSQL tests `191
-  passed, 2 skipped`, and Playwright `38 passed (11.0m)` with no
-  `error-context.md`.
+- `./scripts/verify.sh` completed once after the final harness fix with
+  `CASAVIVA_VERIFY_EXIT=0`. Evidence: backend coverage `188 passed, 5 skipped`
+  (86.44%), PostgreSQL tests `191 passed, 2 skipped`, and Playwright `38
+  passed (10.9m)` with no `error-context.md`.
 - The public/contact Turnstile flow is verified end-to-end: a valid test token
   sends a public inquiry, receives 201 and renders confirmation; an invalid
   token receives 400 and renders rejection. Tokens and required consent remain
@@ -17,10 +17,13 @@ This handoff record contains no credentials or secret values.
 - The E2E harness starts from isolated `casaviva_test` PostgreSQL. Its E2E-only
   throttle settings prevent parallel auth and inquiry fixtures from leaking
   rate-limit state; production settings are unchanged.
-- Navigation assertions wait for a successful RSC response before confirming
-  URL/content. Traces showed navigation and 200 RSC responses; Next dev Fast
-  Refresh could defer the visible URL commit.
-- Local production rehearsal evidence passed: PostgreSQL persistence,
+- Admin/content and analytics assertions use semantic readiness markers; the
+  harness prewarms the relevant routes while retaining `next dev --webpack` so
+  pages use the live isolated database. The property test waits for the
+  functional URL/list result rather than an internal RSC request.
+- Local production rehearsal completed with
+  `CASAVIVA_REHEARSAL_EXIT=0` and `PASS LOCAL PRODUCTION REHEARSAL`, including
+  PostgreSQL persistence,
   isolated backup checksum/restore, ops-bundle checksum/version tracking, and
   candidate-failure/manual deployment rollback.
 - `terraform fmt -check -recursive infra`, bootstrap and Pilot `terraform

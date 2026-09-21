@@ -6,6 +6,7 @@ test("no crea analítica antes de elegir y Limitar la mantiene desactivada", asy
     if (request.url().includes("/api/v1/public/analytics/")) analyticsRequests.push(request.url());
   });
   await page.goto("/");
+  await expect(page.locator('[data-analytics-ready="true"]')).toBeVisible();
   await expect(page.getByRole("button", { name: "Limitar analítica" })).toBeVisible();
   await page.waitForTimeout(300);
   expect(analyticsRequests).toEqual([]);

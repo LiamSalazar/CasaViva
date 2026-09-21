@@ -16,6 +16,13 @@ if os.environ.get("CASAVIVA_E2E") == "1":
             "login": "60/min",
             "mfa": "60/min",
             "inquiry": "60/hour",
+            # Playwright exercises the full public navigation flow from one
+            # loopback address.  Keep production limits intact while ensuring
+            # that a complete isolated suite cannot exhaust the shared anon
+            # bucket midway through its deterministic fixture checks.
+            "anon": "1000/min",
+            "search": "1000/min",
+            "analytics": "1000/min",
         },
     }
 database_name = os.environ.get("POSTGRES_TEST_DB", "casaviva_test")

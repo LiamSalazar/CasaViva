@@ -64,7 +64,10 @@ test("UTM conserva atribución desde sesión hasta venta y BI", async ({ page })
   await page.getByLabel("Cliente").selectOption({ label: "Cliente atribuido E2E" });
   await page.getByLabel("Propiedad").selectOption({ label: "Dúplex E2E 1" });
   await page.getByLabel("Precio de venta").fill("1500000");
-  await page.getByLabel("Fecha de cierre").fill(new Date().toISOString().slice(0, 16));
+  // A `datetime-local` value has minute precision.  Choose a closure that is
+  // unambiguously after the inquiry rather than accidentally landing at the
+  // first second of the current minute in a UTC browser.
+  await page.getByLabel("Fecha de cierre").fill(new Date(Date.now() + 5 * 60_000).toISOString().slice(0, 16));
   await page.getByRole("button", { name: "Guardar cambios" }).click();
   await expect(page.getByRole("row").filter({ hasText: "Cliente atribuido E2E" })).toBeVisible();
 

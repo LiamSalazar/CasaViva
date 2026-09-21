@@ -150,7 +150,7 @@ export function AdminLayout({
       </div>
     );
   return (
-    <div className="admin-layout">
+    <div className="admin-layout" data-admin-ready="true">
       <AdminSidebar />
       <AdminHeader title={title} />
       <main className="admin-main">{children}</main>

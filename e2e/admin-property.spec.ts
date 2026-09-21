@@ -41,13 +41,7 @@ test("propiedad particular conserva campos, precio, publicación, consulta, arch
   await page.getByLabel("Referencia", { exact: true }).fill("E2E-PRIVATE-ROUNDTRIP");
   await page.getByLabel("Comisión %").fill("3.5");
   await page.getByLabel("Notas internas").fill("Dato confidencial de prueba.");
-  const createdNavigation = page.waitForResponse((response) =>
-    response.status() === 200
-    && response.url().includes("/administracion/propiedades?_rsc="),
-  );
   await page.getByRole("button", { name: "Guardar propiedad" }).click();
-  await createdNavigation;
-
   await expect(page).toHaveURL(/\/administracion\/propiedades$/);
   const row = page.getByRole("row").filter({ hasText: title });
   await expect(row).toBeVisible();

@@ -77,7 +77,7 @@ export function AnalyticsProvider() {
   }, [pathname, search, preference]);
   if (!ready || preference || pathname.startsWith("/administracion") || pathname.startsWith("/admin") || pathname.startsWith("/preview")) return null;
   const choose = (value: AnalyticsPreference) => { localStorage.setItem(ANALYTICS_PREFERENCE_KEY, value); setPreference(value); };
-  return <aside className="analytics-notice" aria-label="Preferencias de analítica">
+  return <aside className="analytics-notice" aria-label="Preferencias de analítica" data-analytics-ready="true">
     <p>CasaViva utiliza almacenamiento técnico de sesión y analítica propia para operar y entender el uso del sitio. No utilizamos píxeles publicitarios de terceros en esta etapa.</p>
     <div><button type="button" onClick={() => choose("understood")}>Entendido</button><button type="button" onClick={() => choose("limited")}>Limitar analítica</button><Link href="/aviso-de-privacidad">Más información</Link></div>
   </aside>;
