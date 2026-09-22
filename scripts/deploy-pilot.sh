@@ -53,6 +53,17 @@ recover() {
     echo "Candidate $IMAGE_SHA failed after migration; application rollback begins (database migrations are retained)." >&2
     if [[ -f "$ROOT/shared/previous_release" ]]; then
       "$ROOT/bin/rollback.sh" || echo "ROLLBACK_FAILED: manual intervention required" >&2
+    elif [[ "$previous" =~ ^[0-9a-f]{40}$ && -f "$ROOT/releases/$previous/docker-compose.yml" && -f "$ROOT/releases/$previous/.env.production" ]]; then
+      previous_release="$ROOT/releases/$previous"
+      previous_compose=(docker compose -p "$PROJECT" --env-file "$previous_release/.env.production" -f "$previous_release/docker-compose.yml")
+      "${previous_compose[@]}" config --quiet
+      "${previous_compose[@]}" up -d --remove-orphans --wait
+      ln -sfn "$previous_release" "$ROOT/current"
+      ops_target="$(cat "$ROOT/shared/previous_ops_release" 2>/dev/null || true)"
+      if [[ "$ops_target" =~ ^[0-9a-f]{40}$ && -d "$ROOT/ops-releases/$ops_target" ]]; then
+        printf '%s\n' "$ops_target" > "$ROOT/shared/current_ops_release"
+        ln -sfn "$ROOT/ops-releases/$ops_target" "$ROOT/current-ops"
+      fi
     elif [[ "$(cat "$ROOT/shared/bootstrap_release" 2>/dev/null || true)" == "$previous" ]]; then
       "${bootstrap_compose[@]}" up -d --remove-orphans --wait || echo "BOOTSTRAP_RECOVERY_FAILED" >&2
     else
@@ -75,7 +86,7 @@ rollback_armed=true
 actual_user="$("${compose[@]}" run --rm -e DATABASE_URL="$APP_DATABASE_URL" backend python manage.py shell -c 'from django.db import connection; connection.ensure_connection(); print(connection.connection.info.user)' | tail -1)"
 [[ "$actual_user" == casaviva_app ]] || { echo "Runtime DB role is $actual_user, expected casaviva_app" >&2; false; }
 "${compose[@]}" up -d --wait postgres backend frontend
-"${compose[@]}" exec -T backend python -c 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/api/health/ready/", timeout=5).read()'
+"${compose[@]}" exec -T backend python -c 'import urllib.request; request = urllib.request.Request("http://127.0.0.1:8000/api/health/ready/", headers={"X-Forwarded-Proto": "https"}); urllib.request.urlopen(request, timeout=5).read()'
 "${compose[@]}" exec -T frontend node -e "fetch('http://127.0.0.1:3000/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 "${compose[@]}" run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile
 
