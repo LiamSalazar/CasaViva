@@ -12,8 +12,8 @@ backup_dir="$(mktemp -d)"
 trap 'rm -rf -- "$backup_dir"' EXIT
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 backup_file="$backup_dir/casaviva-$timestamp.dump"
-docker run --rm --user 0 --network casaviva_default -e PGDATABASE="$BACKUP_DATABASE_URL" -v "$backup_dir:/backup" postgres:18 \
-  pg_dump --format=custom --no-owner --no-acl --file="/backup/$(basename "$backup_file")"
+docker run --rm --user 0 --network casaviva_default -v "$backup_dir:/backup" postgres:18 \
+  pg_dump --dbname="$BACKUP_DATABASE_URL" --format=custom --no-owner --no-acl --file="/backup/$(basename "$backup_file")"
 docker run --rm -i postgres:18 pg_restore --list < "$backup_file" >/dev/null
 sha256sum "$backup_file" > "$backup_file.sha256"
 aws s3 cp "$backup_file" "$BACKUP_S3_URI/daily/" --sse AES256
