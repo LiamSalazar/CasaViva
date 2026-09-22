@@ -17,7 +17,7 @@ test("home, catálogo dinámico, paginación, detalle y favorito usan el sistema
   const listingsResponse = page.waitForResponse((response) => {
     const url = new URL(response.url());
     return response.status() === 200
-      && url.pathname === "/api/v1/public/listings"
+      && url.pathname.replace(/\/$/, "") === "/api/v1/public/listings"
       && url.searchParams.get("property_type") === "duplex";
   });
   await page.getByRole("button", { name: /^Dúplex/ }).click();
