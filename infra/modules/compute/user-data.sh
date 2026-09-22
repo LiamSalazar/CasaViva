@@ -1,7 +1,11 @@
 #!/bin/bash
 set -Eeuo pipefail
-dnf install -y docker amazon-cloudwatch-agent jq
+
+# Keep user-data limited to host bootstrap. The versioned ops bundle is
+# installed later through SSM; no application code or secrets belong here.
+dnf install -y docker amazon-cloudwatch-agent
 systemctl enable --now docker amazon-ssm-agent
+
 install -d -m 0755 /opt/casaviva/{bin,config,releases,ops-releases,shared,logs}
 install -d -m 0700 /opt/casaviva/postgres
 
@@ -20,40 +24,3 @@ grep -q "UUID=$$uuid " /etc/fstab || printf 'UUID=%s /opt/casaviva/postgres xfs 
 mountpoint -q /opt/casaviva/postgres || mount /opt/casaviva/postgres
 chown 999:999 /opt/casaviva/postgres
 chmod 700 /opt/casaviva/postgres
-
-printf '%s' '${deploy_script}' | base64 -d > /opt/casaviva/bin/deploy.sh
-printf '%s' '${rollback_script}' | base64 -d > /opt/casaviva/bin/rollback.sh
-printf '%s' '${backup_script}' | base64 -d > /opt/casaviva/bin/backup-postgres-s3.sh
-printf '%s' '${ops_installer}' | base64 -d > /opt/casaviva/bin/install-ops-bundle.sh
-printf '%s' '${compose_file}' | base64 -d > /opt/casaviva/config/docker-compose.production.yml
-printf '%s' '${caddy_file}' | base64 -d > /opt/casaviva/config/Caddyfile
-printf '%s' '${init_roles}' | base64 -d > /opt/casaviva/config/init-roles.sh
-printf '%s' '${cloudwatch_config}' | base64 -d > /opt/casaviva/config/cloudwatch-agent.json
-chmod 0755 /opt/casaviva/bin/*.sh
-chmod 0644 /opt/casaviva/config/*
-
-cat >/etc/systemd/system/casaviva-postgres-backup.service <<'UNIT'
-[Unit]
-Description=CasaViva PostgreSQL backup to S3
-After=docker.service network-online.target
-Wants=network-online.target
-[Service]
-Type=oneshot
-EnvironmentFile=/opt/casaviva/shared/backup.env
-ExecStart=/opt/casaviva/bin/backup-postgres-s3.sh
-User=root
-UNIT
-cat >/etc/systemd/system/casaviva-postgres-backup.timer <<'UNIT'
-[Unit]
-Description=Daily CasaViva PostgreSQL backup
-[Timer]
-OnCalendar=*-*-* 03:15:00 UTC
-Persistent=true
-RandomizedDelaySec=15m
-[Install]
-WantedBy=timers.target
-UNIT
-systemctl daemon-reload
-/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
-  -a fetch-config -m ec2 -c file:/opt/casaviva/config/cloudwatch-agent.json -s
-systemctl is-active --quiet amazon-cloudwatch-agent

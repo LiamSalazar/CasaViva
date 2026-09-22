@@ -68,14 +68,6 @@ resource "aws_instance" "pilot" {
   }
   user_data = templatefile("${path.module}/user-data.sh", {
     postgres_volume_id = aws_ebs_volume.postgres.id
-    deploy_script      = base64encode(file("${path.root}/../../../scripts/deploy-pilot.sh"))
-    rollback_script    = base64encode(file("${path.root}/../../../scripts/rollback-pilot.sh"))
-    backup_script      = base64encode(file("${path.root}/../../../scripts/backup-postgres-s3.sh"))
-    ops_installer      = base64encode(file("${path.root}/../../../scripts/install-ops-bundle.sh"))
-    compose_file       = base64encode(file("${path.root}/../../../docker-compose.production.yml"))
-    caddy_file         = base64encode(file("${path.root}/../../../docker/Caddyfile"))
-    init_roles         = base64encode(file("${path.root}/../../../docker/postgres/init-roles.sh"))
-    cloudwatch_config  = base64encode(file("${path.root}/../../../docker/cloudwatch-agent.json"))
   })
   user_data_replace_on_change = false
   root_block_device {
