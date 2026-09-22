@@ -50,7 +50,7 @@ systemctl is-active --quiet amazon-cloudwatch-agent
 "${compose[@]}" up -d --remove-orphans --wait
 actual_user="$("${compose[@]}" exec -T backend python manage.py shell -c 'from django.db import connection; connection.ensure_connection(); print(connection.connection.info.user)' | tail -1)"
 [[ "$actual_user" == casaviva_app ]] || { echo "Runtime DB role is $actual_user" >&2; exit 1; }
-curl --insecure --fail --silent --show-error https://127.0.0.1:8443/api/health/ready/ >/dev/null
+curl --insecure --fail --silent --show-error https://localhost:8443/api/health/ready/ >/dev/null
 printf '%s\n' "$IMAGE_SHA" > "$ROOT/shared/current_release"
 printf '%s\n' "$IMAGE_SHA" > "$ROOT/shared/bootstrap_release"
 ln -sfn "$release" "$ROOT/current"
