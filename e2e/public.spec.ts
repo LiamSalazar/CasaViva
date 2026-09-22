@@ -14,12 +14,18 @@ test("home, catálogo dinámico, paginación, detalle y favorito usan el sistema
   );
   await page.goto("/propiedades");
   await expect(page.getByRole("button", { name: /^Dúplex/ })).toBeVisible();
+  const listingsResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.status() === 200
+      && url.pathname === "/api/v1/public/listings"
+      && url.searchParams.get("property_type") === "duplex";
+  });
   await page.getByRole("button", { name: /^Dúplex/ }).click();
   await expect(page).toHaveURL(/propertyType=duplex/);
+  await listingsResponse;
   const resultSummary = page.getByText(/\d+ propiedades/).first();
   await expect(resultSummary).toBeVisible();
-  const total = Number((await resultSummary.textContent())?.match(/\d+/)?.[0]);
-  expect(total).toBeGreaterThan(24);
+  await expect.poll(async () => Number((await resultSummary.textContent())?.match(/\d+/)?.[0] ?? 0)).toBeGreaterThan(24);
   await expect(page.getByRole("button", { name: "Siguiente" })).toBeEnabled();
   await page.getByRole("button", { name: "Siguiente" }).click();
   await expect(page).toHaveURL(/page=2/);
