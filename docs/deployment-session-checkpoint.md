@@ -44,3 +44,38 @@ This handoff record contains no credentials or secret values.
 
 No AWS resource, DNS record, Terraform apply, or deployment was performed in
 this Phase A session.
+
+## AWS Pilot production handoff — 2026-09-23
+
+**DONE — production operational handoff**
+
+- Final release: `3ae67d4a148cf577242955b7b6cdeaaecfc2700c`. Exact CI passed
+  (`35877871210`); Deploy Pilot is manual-only.
+- Deploy Pilot fix run `35879627870` succeeded. The real rollback command
+  `2ff1666a-93b8-4a56-bf4f-3a533aa658b1` succeeded, authenticated to ECR
+  just-in-time through the EC2 IAM role, and explicitly did not reverse
+  database migrations. Restore run `35891333292` succeeded.
+- Release state is coherent: current application/ops and running backend/
+  frontend are `3ae67d4...`; previous application/ops are
+  `19dca5698f0656579fb006779f29440ed72ac1fd`.
+- Public production is healthy: apex and `www` TLS validate, `www` redirects
+  to the apex, `/`, live, ready, Privacy `integral-2026-09`, and Terms
+  `terms-2026-09` return 200. HSTS is exactly one header with `max-age=3600`
+  and no `includeSubDomains` or `preload`.
+- Production readiness passes with zero critical blockers. PostgreSQL remains
+  healthy on EBS `vol-0cc53e5e1d2e0e9fc` mounted at `/opt/casaviva/postgres`;
+  backup timer and CloudWatch Agent are active. Liam remains present with MFA;
+  one Privacy and one Terms version are active.
+- Security gates remain satisfied: only 80/443 are public; 22, 5432, 3000,
+  8000, and 8443 are not public; S3 buckets are private; IMDSv2 is required;
+  runtime AWS access uses the EC2 IAM role; GitHub deployment uses OIDC.
+- Pilot Terraform plan against the remote state returned `No changes` with
+  detailed exit code 0. No Terraform apply, DNS, certificate, HSTS, or
+  infrastructure change was performed during closeout.
+
+The temporary local operator identity `CasaViva_RootDeployment` still has one
+active access key and `AdministratorAccess`. It was not removed. Based on the
+validated GitHub OIDC deployment, EC2 instance role, and absence of runtime
+static credentials, it is safe for the operator to remove that temporary key
+after arranging any replacement credentials needed for future local Terraform
+operations.

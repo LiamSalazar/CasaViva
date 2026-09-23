@@ -1,8 +1,7 @@
 # Auditoría final de preparación para producción
 
-Fecha de evidencia local: 2026-09-21. Un estado sólo cambia a `DONE` con una
-prueba o inspección verificable. Las operaciones que requieren AWS permanecen
-bloqueadas hasta el preflight, plan y rehearsal reales.
+Fecha de cierre: 2026-09-23. Un estado sólo cambia a `DONE` con una prueba o
+inspección verificable.
 
 | ID | Severidad | Subsistema | Corrección/evidencia | Estado |
 | --- | --- | --- | --- | --- |
@@ -15,10 +14,11 @@ bloqueadas hasta el preflight, plan y rehearsal reales.
 | OPS-01 | P0 | Despliegue/rollback | Bundle checksum/current-previous, fallo de candidato y rollback manual verificados localmente; las migraciones no se revierten. | DONE |
 | TF-01 | P0 | Terraform | `fmt -check`, validate de bootstrap/Pilot y tflint PASS; Checkov 112 passed, 0 failed, 4 skips documentados (KMS policy grammar y monitoring básico Pilot). | DONE |
 | OPS-03 | P0 | Rehearsal local | `CASAVIVA_REHEARSAL_EXIT=0`, `PASS LOCAL PRODUCTION REHEARSAL`; verify interno 38/38, persistencia PostgreSQL, backup/restore, ops bundle y rollback PASS. | DONE |
-| CI-01 | P0 | CI/CD | Debe validarse CI remoto para el SHA exacto que se publique. | PENDIENTE |
-| AWS-01 | P0 | Cuenta, DNS y state remoto | Faltan identidad perfil `casaviva-deploy`, región, Route53/hosted zone, recursos existentes y backend Terraform. | PENDIENTE |
-| PLAN-01 | P0 | Plan Terraform | Falta plan real bootstrap/Pilot y revisión de create/change/destroy, ausencia de NAT/RDS/ALB/ECS/Growth y costo. | PENDIENTE |
-| OPS-02 | P0 | Pilot real | IMDSv2/IAM, S3, systemd, KMS/EBS, SSM y DNS/TLS públicos requieren rehearsal AWS. | BLOCKED — REQUIRES AWS PILOT REHEARSAL |
+| CI-01 | P0 | CI/CD | CI exacto del release `3ae67d4a...` SUCCESS; Deploy Pilot manual-only con concurrencia `casaviva-production-deploy`, `cancel-in-progress=false`. | DONE |
+| AWS-01 | P0 | Cuenta, DNS y state remoto | Preflight AWS con `casaviva-deploy`; Route53, dominio, backend remoto y recursos Pilot verificados sin cambios adicionales. | DONE |
+| PLAN-01 | P0 | Plan Terraform | Pilot plan remoto: `No changes`, detailed exit code 0; no drift. | DONE |
+| OPS-02 | P0 | Pilot real | EC2/SSM/IAM/OIDC, EBS/KMS, S3 privado, PostgreSQL, backups, CloudWatch, DNS y TLS públicos verificados. | DONE |
+| DEPLOY-01 | P0 | Deploy/rollback/restore | Deploy fix, rollback real con ECR JIT y restore final exitosos; migraciones no se revierten y el estado current/previous queda coherente. | DONE |
 
 ## Restricciones mantenidas
 
@@ -26,4 +26,6 @@ bloqueadas hasta el preflight, plan y rehearsal reales.
   IAM/OIDC, SSM, CloudWatch y Budget; no crea NAT Gateway, RDS, ALB, ECS ni
   Growth.
 - Ningún secreto AWS ni `tfvars` con secretos se guarda en el repositorio.
-- No se ejecutó Terraform apply ni se cambió DNS.
+- No se ejecutó Terraform apply ni se cambió DNS durante este cierre.
+- El dominio público validado es `casaviva-hogar.com`, con `www` redirigido al
+  apex y HSTS conservador de una hora.
