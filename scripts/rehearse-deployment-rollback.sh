@@ -27,7 +27,7 @@ chmod +x "$root/bin/rollback.sh" "$root/ops-releases/$sha_b/scripts/"*
 release_a="$root/releases/$sha_a"
 mkdir -p "$release_a"
 printf 'services: {}\n' > "$release_a/docker-compose.yml"
-printf 'PUBLIC_DOMAIN="pilot.example.test"\nFRONTEND_IMAGE="registry/casaviva-frontend:%s"\n' "$sha_a" > "$release_a/.env.production"
+printf 'PUBLIC_DOMAIN="pilot.example.test"\nBACKEND_IMAGE="123456789012.dkr.ecr.mx-central-1.amazonaws.com/casaviva-backend:%s"\nFRONTEND_IMAGE="123456789012.dkr.ecr.mx-central-1.amazonaws.com/casaviva-frontend:%s"\n' "$sha_a" "$sha_a" > "$release_a/.env.production"
 printf '%s\n' "$sha_a" > "$root/shared/current_release"
 
 printf '%s\n' '#!/usr/bin/env bash' 'set -Eeuo pipefail' \
@@ -40,7 +40,8 @@ printf '%s\n' '#!/usr/bin/env bash' 'set -Eeuo pipefail' \
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$fake/systemctl"
 printf '%s\n' '#!/usr/bin/env bash' \
   'set -Eeuo pipefail' \
-  'if [[ "$1" == login ]]; then cat >/dev/null; exit 0; fi' \
+  'if [[ "$1" == login ]]; then [[ -n "${ROLLBACK_EVENTS:-}" ]] && echo login >> "$ROLLBACK_EVENTS"; cat >/dev/null; exit 0; fi' \
+  'if [[ -n "${ROLLBACK_EVENTS:-}" && "$*" == *" pull" ]]; then echo pull >> "$ROLLBACK_EVENTS"; fi' \
   'env_file=""; previous=""' \
   'for arg in "$@"; do [[ "$previous" == --env-file ]] && env_file="$arg"; previous="$arg"; done' \
   '[[ "$*" == *"connection.connection.info.user"* ]] && { echo casaviva_app; exit 0; }' \
@@ -68,7 +69,10 @@ PATH="$fake:$PATH" CASAVIVA_ROOT="$root" EXPECTED_PUBLIC_IP=203.0.113.10 "$repo/
 grep -q 'casaviva_app:app%23%20%24%3D%3A%40%2F%20password@' "$root/releases/$sha_b/.env.production"
 rendered_password="$(set -a; source "$root/releases/$sha_b/.env.production"; set +a; printf '%s' "$CASAVIVA_APP_PASSWORD")"
 [[ "$rendered_password" == 'app# $=:@/ password' ]]
-PATH="$fake:$PATH" CASAVIVA_ROOT="$root" "$repo/scripts/rollback-pilot.sh" >/dev/null
+: > "$tmp/rollback-events"
+PATH="$fake:$PATH" CASAVIVA_ROOT="$root" ROLLBACK_EVENTS="$tmp/rollback-events" "$repo/scripts/rollback-pilot.sh" >/dev/null
+[[ "$(sed -n '1p' "$tmp/rollback-events")" == login ]]
+[[ "$(sed -n '2p' "$tmp/rollback-events")" == pull ]]
 [[ "$(cat "$root/shared/current_release")" == "$sha_a" ]]
 [[ "$(cat "$root/shared/current_ops_release")" == "$sha_a" ]]
 echo "PASS release B healthy then manual application/ops rollback restored A"
