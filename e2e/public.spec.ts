@@ -90,6 +90,56 @@ test("home muestra ubicaciones en una sola línea con media real, flechas, drag 
   await expect(page).toHaveURL(new RegExp(`${href}$`));
 });
 
+test("el carrusel de desarrollos conserva el click y suprime navegación después de arrastrar", async ({ page }) => {
+  await page.goto("/");
+  const carousel = page.getByRole("region", { name: "Carrusel de Desarrollos" });
+  const viewport = carousel.locator(".horizontal-carousel-viewport");
+  const link = carousel.locator('a[href^="/desarrollos/"]').first();
+  await expect(link).toBeVisible();
+  const href = await link.getAttribute("href");
+  await link.click();
+  await expect(page).toHaveURL(new RegExp(`${href}$`));
+
+  await page.goto("/");
+  const box = await viewport.boundingBox();
+  expect(box).toBeTruthy();
+  await page.mouse.move(box!.x + box!.width * 0.8, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width * 0.2, box!.y + box!.height / 2, { steps: 8 });
+  await page.mouse.up();
+  expect(await viewport.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  await expect(page).toHaveURL(/\/$/);
+});
+
+test("un desarrollo con coordenadas propias muestra su mapa sin inventario", async ({ page }) => {
+  const id = "00000000-0000-0000-0000-000000000098";
+  await page.route("**/api/v1/public/developments/coordenadas-e2e/", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      id, slug: "coordenadas-e2e", name: "Desarrollo con coordenadas", developerName: "Constructora",
+      description: "Mapa propio.", shortDescription: "", state: "Estado de México", municipality: "Tecámac",
+      latitude: 19.2435, longitude: -98.8972, heroImage: null, gallery: ["/casaviva-placeholder.svg", "/casaviva-placeholder.svg?second"], amenities: [],
+      published: true, featured: false, publishedListingCount: 0, availableListingCount: 0, currentMinPrice: null,
+    }),
+  }));
+  await page.route(`**/api/v1/public/listings/?development=${id}`, (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ count: 0, next: null, previous: null, results: [] }),
+  }));
+  await page.goto("/desarrollos/coordenadas-e2e");
+  await expect(page.locator(".leaflet-container")).toBeVisible();
+  await expect(page.getByText("Ubicación sin coordenadas disponibles.")).toHaveCount(0);
+  await page.getByRole("button", { name: /Abrir foto 1/ }).click();
+  const previous = page.getByRole("button", { name: "Anterior" });
+  const next = page.getByRole("button", { name: "Siguiente" });
+  await expect(previous).toHaveClass(/gallery-arrow/);
+  await expect(next).toHaveClass(/gallery-arrow/);
+  await expect(previous).toHaveCSS("left", "20px");
+  await expect(next).toHaveCSS("right", "20px");
+  await next.click();
+  await expect(page.getByRole("dialog")).toContainText("Foto 2 / 2");
+});
+
 test("detalle directo sin galería usa estado neutral y no crea placeholders", async ({ page }) => {
   await page.route("**/api/v1/public/developments/no-media-e2e/", (route) => route.fulfill({
     status: 200,

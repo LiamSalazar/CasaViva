@@ -112,6 +112,31 @@ def test_property_create_rolls_back_when_price_is_invalid(admin_client, catalog)
 
 
 @pytest.mark.django_db
+def test_developer_property_allows_null_postal_code_on_create_and_update(admin_client, catalog):
+    payload = aggregate_payload(catalog)
+    payload["offering"].update({
+        "source_type": "DEVELOPER",
+        "development_model": str(catalog["link"].id),
+        "property_type": str(catalog["offering"].property_type_id),
+        "state": None,
+        "municipality": None,
+        "postal_code": None,
+    })
+    payload["listing"].update({"title": "Casa desarrolladora sin CP", "slug": "casa-desarrolladora-sin-cp"})
+    created = admin_client.post("/api/v1/admin/properties/", payload, format="json")
+    assert created.status_code == 201, created.data
+    listing = Listing.objects.get(slug="casa-desarrolladora-sin-cp")
+    assert listing.offering.postal_code is None
+
+    payload.update({"listing_version": listing.version, "offering_version": listing.offering.version})
+    payload["listing"]["description"] = "Actualización sin código postal."
+    updated = admin_client.patch(f"/api/v1/admin/properties/{listing.id}/", payload, format="json")
+    assert updated.status_code == 200, updated.data
+    listing.refresh_from_db()
+    assert listing.offering.postal_code is None
+
+
+@pytest.mark.django_db
 def test_property_update_is_atomic_and_does_not_add_unchanged_history(admin_client, catalog):
     create = admin_client.post("/api/v1/admin/properties/", aggregate_payload(catalog), format="json")
     assert create.status_code == 201, create.data

@@ -10,6 +10,8 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       { protocol: "https", hostname: "images.unsplash.com" },
       ...(mediaHostname ? [{ protocol: "https" as const, hostname: mediaHostname }] : []),
+      { protocol: "https", hostname: "**.s3.mx-central-1.amazonaws.com" },
+      { protocol: "https", hostname: "s3.mx-central-1.amazonaws.com" },
     ],
   },
   async rewrites() {

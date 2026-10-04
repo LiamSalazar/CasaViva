@@ -5,7 +5,7 @@ import L from "leaflet";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect } from "react";
-import type { Property } from "@/types";
+import type { Development, Property } from "@/types";
 import { formatCurrency } from "@/lib/utils";
 
 function Bounds({ properties }: { properties: Property[] }) {
@@ -67,6 +67,25 @@ export function MapView({
             </Popup>
           </Marker>
         ))}
+      </MapContainer>
+    </div>
+  );
+}
+
+export function DevelopmentMapView({ development }: { development: Development }) {
+  const latitude = development.latitude!;
+  const longitude = development.longitude!;
+  const position: [number, number] = [latitude, longitude];
+  return (
+    <div className="map-shell">
+      <MapContainer center={position} zoom={14} scrollWheelZoom>
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        <Marker position={position}>
+          <Popup><strong>{development.name}</strong></Popup>
+        </Marker>
       </MapContainer>
     </div>
   );

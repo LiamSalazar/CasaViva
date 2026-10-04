@@ -54,7 +54,7 @@ import {
   StatusBadge,
   useToast,
 } from "@/components/ui";
-import { api, apiFetch, fetchAllPages, mapProperty } from "@/services/api";
+import { api, apiErrorMessages, apiFetch, fetchAllPages, mapProperty } from "@/services/api";
 
 const adminNav = [
   ["Inicio", "/administracion", Home, []],
@@ -470,6 +470,20 @@ const propertySchema = z.object({
   title: z.string().min(3),
   slug: z.string().min(3),
 });
+function propertyFormIssues(item: Property): string[] {
+  const issues: string[] = [];
+  if (!item.title.trim()) issues.push("title: El título es obligatorio.");
+  if (!item.slug.trim()) issues.push("slug: El slug es obligatorio.");
+  if (!item.propertyType) issues.push("propertyType: Selecciona el tipo de propiedad.");
+  if (item.sourceType === "DEVELOPER" && !item.developmentModelId) issues.push("offering.development_model: Selecciona un modelo de desarrollo.");
+  if (item.priceLabel !== "on-request" && item.price === undefined) issues.push("price.amount_min: Captura el precio.");
+  if (item.priceLabel === "range" && item.priceMax === undefined) issues.push("price.amount_max: Captura el precio máximo.");
+  if (item.published) {
+    if (!item.promotionAuthorized) issues.push("offering.promotion_authorized: Confirma que el proveedor autorizó la promoción antes de publicar.");
+    if (!item.informationVerifiedAt) issues.push("offering.information_verified_at: Registra cuándo se verificó la información comercial.");
+  }
+  return issues;
+}
 const blankProperty = (): Property => ({
   id: uid("prop"),
   slug: "",
@@ -542,6 +556,7 @@ export function PropertyFormPage({ id }: { id?: string }) {
         ? parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`)
         : []),
       ...(duplicate ? ["El slug ya existe."] : []),
+      ...propertyFormIssues(item),
     ];
     if (issues.length) {
       setErrors(issues);
@@ -553,7 +568,7 @@ export function PropertyFormPage({ id }: { id?: string }) {
       toast(existing ? "Cambios guardados" : "Propiedad creada");
       router.push("/administracion/propiedades");
     } catch (error) {
-      setErrors([error instanceof Error ? error.message : "Error al guardar"]);
+      setErrors(apiErrorMessages(error));
     } finally { setSaving(false); }
   };
   return (
@@ -661,7 +676,7 @@ export function PropertyFormPage({ id }: { id?: string }) {
             value={item.address || ""}
             onChange={(v) => update("address", v)}
           />
-          <Text label="Código postal" value={item.postalCode || ""} onChange={(value) => update("postalCode", value)} />
+          <Text label="Código postal (opcional)" value={item.postalCode || ""} onChange={(value) => update("postalCode", value)} />
           <NumberField
             label="Latitud"
             value={item.latitude}
@@ -966,7 +981,7 @@ export function DevelopmentFormPage({ id }: { id?: string }) {
           <Select label="Localidad" value={item.localityId || ""} onChange={(value) => u("localityId", value || undefined)} options={[["Sin especificar", ""], ...localityOptions.map((option) => [option.name, option.id])]} />
           <Select label="Colonia" value={item.neighborhoodId || ""} onChange={(value) => { const option = neighborhoodOptions.find((candidate) => candidate.id === value); setItem((current) => ({ ...current, neighborhoodId: value || undefined, neighborhood: option?.name, postalCode: current.postalCode || option?.postal_code || undefined })); }} options={[["Sin especificar", ""], ...neighborhoodOptions.map((option) => [option.name, option.id])]} />
           <Text label="Dirección" value={item.address || ""} onChange={(value) => u("address", value)} />
-          <Text label="Código postal" value={item.postalCode || ""} onChange={(value) => u("postalCode", value)} />
+          <Text label="Código postal (opcional)" value={item.postalCode || ""} onChange={(value) => u("postalCode", value)} />
           <NumberField
             label="Latitud"
             value={item.latitude}

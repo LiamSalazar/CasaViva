@@ -9,6 +9,7 @@ import { z } from "zod";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import {
   DevelopmentCard,
+  DynamicDevelopmentMapView,
   DynamicMapView,
   PropertyGridCard,
 } from "@/components/property";
@@ -152,8 +153,8 @@ export function DevelopmentDetailPage({ slug }: { slug: string }) {
                 <Image src={gallery[galleryIndex]} alt={`${d.name}, foto ${galleryIndex + 1}`} fill sizes="100vw" />
               </div>
               {gallery.length > 1 && <>
-                <button className="gallery-nav prev" type="button" onClick={() => moveGallery(-1)} aria-label="Anterior"><ChevronLeft /></button>
-                <button className="gallery-nav next" type="button" onClick={() => moveGallery(1)} aria-label="Siguiente"><ChevronRight /></button>
+                <button className="gallery-arrow prev" type="button" onClick={() => moveGallery(-1)} aria-label="Anterior"><ChevronLeft /></button>
+                <button className="gallery-arrow next" type="button" onClick={() => moveGallery(1)} aria-label="Siguiente"><ChevronRight /></button>
               </>}
             </div>
           )}
@@ -176,7 +177,9 @@ export function DevelopmentDetailPage({ slug }: { slug: string }) {
             <h2>Ubicación</h2>
           </div>
           {inventoryLoaded ? (
-            mappableModels.length ? <DynamicMapView properties={mappableModels} /> : <div className="map-shell map-unavailable"><span>Ubicación sin coordenadas disponibles.</span></div>
+            Number.isFinite(d.latitude) && Number.isFinite(d.longitude)
+              ? <DynamicDevelopmentMapView development={d} />
+              : mappableModels.length ? <DynamicMapView properties={mappableModels} /> : <div className="map-shell map-unavailable"><span>Ubicación sin coordenadas disponibles.</span></div>
           ) : <div className="map-shell skeleton" />}
         </section>
         <section className="section">

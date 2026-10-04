@@ -7,6 +7,7 @@ from django.test import override_settings
 from PIL import Image
 
 from apps.media_library.models import MediaAsset
+from apps.media_library.services import store_upload
 
 
 def image_bytes(image_format="PNG"):
@@ -25,6 +26,22 @@ def test_valid_image_is_reprocessed_and_stored(admin_client, tmp_path):
     assert asset.mime_type == "image/webp"
     assert asset.width == 20 and asset.height == 10
     assert asset.storage_key.endswith(".webp")
+
+
+@pytest.mark.django_db
+def test_transformed_image_is_saved_with_webp_content_type(owner, monkeypatch):
+    saved = {}
+
+    class Storage:
+        def save(self, key, content):
+            saved["key"] = key
+            saved["content_type"] = content.content_type
+            return key
+
+    monkeypatch.setattr("apps.media_library.services.default_storage", Storage())
+    store_upload(SimpleUploadedFile("portada.png", image_bytes(), content_type="image/png"), owner)
+    assert saved["key"].endswith(".webp")
+    assert saved["content_type"] == "image/webp"
 
 
 @pytest.mark.django_db

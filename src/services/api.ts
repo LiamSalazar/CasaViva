@@ -21,13 +21,30 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
     const firstFieldMessage = Object.values(payload || {}).flat().find((value) => typeof value === "string");
-    const error = new Error(payload?.error?.message || payload?.detail || firstFieldMessage || "No fue posible completar la solicitud.") as Error & { status?: number; fields?: Record<string, string[]> };
+    const error = new Error(payload?.error?.message || payload?.detail || firstFieldMessage || "No fue posible completar la solicitud.") as Error & { status?: number; fields?: unknown };
     error.status = response.status;
     error.fields = payload?.error?.fields;
     throw error;
   }
   if (response.status === 204) return undefined as T;
   return response.json();
+}
+
+/** Turns nested DRF validation objects into safe, field-qualified messages. */
+export function validationMessages(fields: unknown, path: string[] = []): string[] {
+  if (typeof fields === "string") return [path.length ? `${path.join(".")}: ${fields}` : fields];
+  if (Array.isArray(fields)) return fields.flatMap((value) => validationMessages(value, path));
+  if (fields && typeof fields === "object") {
+    return Object.entries(fields as Record<string, unknown>).flatMap(([key, value]) => validationMessages(value, [...path, key]));
+  }
+  return [];
+}
+
+export function apiErrorMessages(error: unknown): string[] {
+  const fields = error && typeof error === "object" ? (error as { fields?: unknown }).fields : undefined;
+  const messages = validationMessages(fields);
+  if (messages.length) return messages;
+  return [error instanceof Error ? error.message : "No fue posible completar la solicitud."];
 }
 
 export async function fetchAllPages<T>(path: string): Promise<T[]> {

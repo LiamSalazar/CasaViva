@@ -123,6 +123,8 @@ if STORAGE_BACKEND == "s3":
     AWS_STORAGE_BUCKET_NAME = os.environ.get("S3_BUCKET_NAME")
     AWS_S3_ENDPOINT_URL = os.environ.get("S3_ENDPOINT_URL") or None
     AWS_S3_REGION_NAME = os.environ.get("S3_REGION") or None
+    AWS_S3_SIGNATURE_VERSION = os.environ.get("S3_SIGNATURE_VERSION", "s3v4")
+    AWS_S3_ADDRESSING_STYLE = os.environ.get("S3_ADDRESSING_STYLE", "virtual")
     AWS_S3_CUSTOM_DOMAIN = os.environ.get("S3_CUSTOM_DOMAIN") or None
     AWS_QUERYSTRING_AUTH = os.environ.get("S3_QUERYSTRING_AUTH", "true").lower() == "true"
     AWS_QUERYSTRING_EXPIRE = int(os.environ.get("S3_QUERYSTRING_EXPIRE", "3600"))

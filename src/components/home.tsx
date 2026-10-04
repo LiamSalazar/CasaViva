@@ -297,15 +297,18 @@ function HorizontalCarousel({
     const viewport = viewportRef.current;
     if (!viewport) return;
     dragRef.current = { active: true, startX: event.clientX, startScroll: viewport.scrollLeft, moved: false };
-    setIsDragging(true);
-    viewport.setPointerCapture(event.pointerId);
   };
   const drag = (event: React.PointerEvent<HTMLDivElement>) => {
     const state = dragRef.current;
     const viewport = viewportRef.current;
     if (!state.active || !viewport) return;
     const distance = event.clientX - state.startX;
-    if (Math.abs(distance) > 5) state.moved = true;
+    if (Math.abs(distance) <= 5 && !state.moved) return;
+    if (!state.moved) {
+      state.moved = true;
+      setIsDragging(true);
+      if (!viewport.hasPointerCapture(event.pointerId)) viewport.setPointerCapture(event.pointerId);
+    }
     viewport.scrollLeft = state.startScroll - distance;
   };
   const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {

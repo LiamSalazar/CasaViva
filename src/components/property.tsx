@@ -35,6 +35,11 @@ export const DynamicMapView = dynamic(
   { ssr: false, loading: () => <div className="map-shell skeleton" /> },
 );
 
+export const DynamicDevelopmentMapView = dynamic(
+  () => import("./map-view").then((m) => m.DevelopmentMapView),
+  { ssr: false, loading: () => <div className="map-shell skeleton" /> },
+);
+
 export function PropertyListCard({
   property,
   development,
@@ -598,7 +603,7 @@ export function SecondaryGallery({ property, kind = "photos" }: { property: Prop
     {index !== null && images.length > 0 && <div className="fullscreen-gallery" role="dialog" aria-modal="true" aria-label={kind === "floorplans" ? "Planos de propiedad" : "Galería de propiedad"}>
       <header><span>{kind === "floorplans" ? "Plano" : "Foto"} {index + 1} / {images.length}</span><button className="icon-button" onClick={() => setIndex(null)} aria-label="Cerrar"><X /></button></header>
       <div className="fullscreen-image"><Image src={images[index]} alt={`${property.title}, ${kind === "floorplans" ? "plano" : "foto"} ${index + 1}`} fill sizes="100vw" /></div>
-      {images.length > 1 && <><button className="gallery-nav prev" onClick={() => move(-1)} aria-label="Anterior"><ChevronLeft /></button><button className="gallery-nav next" onClick={() => move(1)} aria-label="Siguiente"><ChevronRight /></button></>}
+      {images.length > 1 && <><button className="gallery-arrow prev" onClick={() => move(-1)} aria-label="Anterior"><ChevronLeft /></button><button className="gallery-arrow next" onClick={() => move(1)} aria-label="Siguiente"><ChevronRight /></button></>}
     </div>}
     </>
   );

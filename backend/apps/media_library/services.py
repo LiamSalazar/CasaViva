@@ -53,5 +53,7 @@ def store_upload(upload, actor, media_type=MediaAsset.Type.IMAGE, alt_text=None)
             raise ValidationError("La imagen está dañada.")
     digest = hashlib.sha256(data).hexdigest()
     key = f"media/{uuid.uuid4()}.{extension}"
-    default_storage.save(key, ContentFile(data))
+    content = ContentFile(data)
+    content.content_type = mime
+    default_storage.save(key, content)
     return MediaAsset.objects.create(storage_key=key, media_type=media_type, original_filename=Path(upload.name).name, mime_type=mime, byte_size=len(data), width=width, height=height, sha256=digest, alt_text=alt_text, uploaded_by=actor)
