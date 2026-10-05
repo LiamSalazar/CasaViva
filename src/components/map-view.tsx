@@ -76,6 +76,13 @@ export function DevelopmentMapView({ development }: { development: Development }
   const latitude = development.latitude!;
   const longitude = development.longitude!;
   const position: [number, number] = [latitude, longitude];
+  const developmentIcon = L.divIcon({
+    className: "development-map-icon",
+    html: '<span class="development-map-marker" aria-hidden="true"><span></span></span>',
+    iconSize: [42, 42],
+    iconAnchor: [21, 42],
+    popupAnchor: [0, -38],
+  });
   return (
     <div className="map-shell">
       <MapContainer center={position} zoom={14} scrollWheelZoom>
@@ -83,7 +90,7 @@ export function DevelopmentMapView({ development }: { development: Development }
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <Marker position={position}>
+        <Marker position={position} icon={developmentIcon}>
           <Popup><strong>{development.name}</strong></Popup>
         </Marker>
       </MapContainer>

@@ -129,6 +129,8 @@ test("un desarrollo con coordenadas propias muestra su mapa sin inventario", asy
   }));
   await page.goto("/desarrollos/coordenadas-e2e");
   await expect(page.locator(".leaflet-container")).toBeVisible();
+  await expect(page.locator(".development-map-marker")).toBeVisible();
+  await expect(page.locator('img[alt="Marker"]')).toHaveCount(0);
   await expect(page.getByText("Ubicación sin coordenadas disponibles.")).toHaveCount(0);
   await page.getByRole("button", { name: /Abrir foto 1/ }).click();
   const previous = page.getByRole("button", { name: "Anterior" });

@@ -1122,6 +1122,28 @@ h2 {
   border-radius: 3px;
   font-size: 12px;
 }
+.development-map-icon {
+  background: transparent;
+  border: 0;
+}
+.development-map-marker {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  background: #c51f3a;
+  border: 3px solid #fff;
+  border-radius: 50% 50% 50% 0;
+  box-shadow: 0 2px 7px rgb(0 0 0 / 32%);
+  transform: rotate(-45deg);
+}
+.development-map-marker > span {
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border-radius: 50%;
+  transform: rotate(45deg);
+}
 .detail-title-wrap {
   padding: 54px 0 36px;
   border-bottom: 1px solid var(--cv-gray-200);
