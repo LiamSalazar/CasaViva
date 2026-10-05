@@ -309,6 +309,7 @@ function HorizontalCarousel({
       setIsDragging(true);
       if (!viewport.hasPointerCapture(event.pointerId)) viewport.setPointerCapture(event.pointerId);
     }
+    event.preventDefault();
     viewport.scrollLeft = state.startScroll - distance;
   };
   const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -332,6 +333,7 @@ function HorizontalCarousel({
         onPointerMove={drag}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
+        onDragStart={(event) => event.preventDefault()}
         onClickCapture={(event) => {
           if (suppressClickRef.current) {
             event.preventDefault();

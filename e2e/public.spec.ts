@@ -83,7 +83,7 @@ test("home muestra ubicaciones en una sola línea con media real, flechas, drag 
   await page.mouse.down();
   await page.mouse.move(box!.x + box!.width * 0.2, box!.y + box!.height / 2, { steps: 8 });
   await page.mouse.up();
-  expect(await viewport.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  await expect.poll(() => viewport.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
 
   await expect(page.locator(`[data-carousel="ubicaciones"] a[href="${href}"]`)).toHaveAttribute("href", href);
   await page.goto(href);
@@ -101,13 +101,14 @@ test("el carrusel de desarrollos conserva el click y suprime navegación despué
   await expect(page).toHaveURL(new RegExp(`${href}$`));
 
   await page.goto("/");
+  await viewport.scrollIntoViewIfNeeded();
   const box = await viewport.boundingBox();
   expect(box).toBeTruthy();
   await page.mouse.move(box!.x + box!.width * 0.8, box!.y + box!.height / 2);
   await page.mouse.down();
   await page.mouse.move(box!.x + box!.width * 0.2, box!.y + box!.height / 2, { steps: 8 });
   await page.mouse.up();
-  expect(await viewport.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  await expect.poll(() => viewport.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
   await expect(page).toHaveURL(/\/$/);
 });
 

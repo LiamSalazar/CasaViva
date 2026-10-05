@@ -28,7 +28,7 @@ test("propiedad particular conserva campos, precio, publicación, consulta, arch
   await page.getByLabel("Precio MXN").fill("1750000");
   await page.getByLabel("Ubicación").selectOption({ index: 1 });
   await page.getByLabel("Dirección").fill("Calle Integridad 42");
-  await page.getByLabel("Código postal").fill("55740");
+  await page.getByLabel("Código postal (opcional)").fill("55740");
   await page.getByLabel("Latitud").fill("19.713456");
   await page.getByLabel("Longitud").fill("-98.968765");
   await page.getByLabel("Recámaras mínimas").fill("3");
@@ -102,4 +102,41 @@ test("propiedad particular conserva campos, precio, publicación, consulta, arch
   await expect(page.getByRole("row").filter({ hasText: title })).toBeVisible();
   expect((await page.request.get(`/api/v1/public/listings/${slug}/`)).status()).toBe(404);
   assertNoErrors();
+});
+
+test("propiedad con código postal vacío se crea y actualiza", async ({ page }) => {
+  await restoreAdminSession(page, "alfredo@example.test");
+  const title = `Propiedad sin CP E2E ${Date.now()}`;
+  await page.goto("/administracion/propiedades/nueva");
+  await page.getByLabel("Título").fill(title);
+  await page.getByLabel("Tipo", { exact: true }).selectOption("duplex");
+  await page.getByLabel("Precio MXN").fill("1500000");
+  await page.getByLabel("Ubicación").selectOption({ index: 1 });
+  await expect(page.getByLabel("Código postal (opcional)")).toHaveValue("");
+  await page.getByRole("button", { name: "Guardar propiedad" }).click();
+  await expect(page).toHaveURL(/\/administracion\/propiedades$/);
+  const row = page.getByRole("row").filter({ hasText: title });
+  await row.getByRole("link", { name: "Editar" }).click();
+  await expect(page.getByLabel("Código postal (opcional)")).toHaveValue("");
+  await page.getByLabel("Descripción completa").fill("Actualización con código postal vacío.");
+  await page.getByRole("button", { name: "Guardar propiedad" }).click();
+  await expect(page).toHaveURL(/\/administracion\/propiedades$/);
+});
+
+test("formulario muestra errores DRF anidados concretos", async ({ page }) => {
+  await restoreAdminSession(page, "alfredo@example.test");
+  await page.goto("/administracion/propiedades/nueva");
+  await page.getByLabel("Título").fill("Error DRF E2E");
+  await page.getByLabel("Tipo", { exact: true }).selectOption("duplex");
+  await page.getByLabel("Precio MXN").fill("1500000");
+  await page.getByLabel("Ubicación").selectOption({ index: 1 });
+  await page.route("**/api/v1/admin/properties/", (route) => route.fulfill({
+    status: 400,
+    contentType: "application/json",
+    body: JSON.stringify({ error: { message: "No fue posible completar la solicitud.", fields: { offering: { development_model: ["Selecciona un modelo válido."] }, price: { amount_min: ["Captura el precio mínimo."] }, listing: { slug: ["Ya existe una propiedad con esta URL."] } } } }),
+  }));
+  await page.getByRole("button", { name: "Guardar propiedad" }).click();
+  await expect(page.getByText("offering.development_model: Selecciona un modelo válido.")).toBeVisible();
+  await expect(page.getByText("price.amount_min: Captura el precio mínimo.")).toBeVisible();
+  await expect(page.getByText("listing.slug: Ya existe una propiedad con esta URL.")).toBeVisible();
 });

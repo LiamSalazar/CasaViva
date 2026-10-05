@@ -84,8 +84,8 @@ function mapDevelopment(d: Record<string, any>): Development {
     createdAt: d.createdAt || "",
     updatedAt: d.updatedAt || "",
     propertyIds: [],
-    published: Boolean(d.published),
-    featured: Boolean(d.featured),
+    published: Boolean(d.published ?? d.is_published),
+    featured: Boolean(d.featured ?? d.is_featured),
     currentMinPrice: numberOrUndefined(d.currentMinPrice),
   };
 }
